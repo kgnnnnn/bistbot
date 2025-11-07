@@ -186,6 +186,21 @@ def main():
 
                 time.sleep(2)
 
+# === KEEP ALIVE ===
+from flask import Flask
+from threading import Thread
+
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "✅ Bot aktif, Render portu açık!"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+Thread(target=run).start()
+
 
 if __name__ == "__main__":
     main()
