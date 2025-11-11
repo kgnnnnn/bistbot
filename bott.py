@@ -47,25 +47,20 @@ def format_number(num):
 def get_price(symbol):
     try:
         ticker = yf.Ticker(symbol.upper() + ".IS")
-        info = ticker.info
-        if not info or "currentPrice" not in info:
+        fi = ticker.fast_info  # daha hafif API
+        fiyat = fi.get("last_price", None)
+        degisim = fi.get("regular_market_percent_change", None)
+        if fiyat is None:
             return None
         return {
+            "fiyat": fiyat,
+            "degisim": f"{degisim:.2f}%" if degisim else "0.00%",
             "url": f"https://finance.yahoo.com/quote/{symbol}.IS",
-            "fiyat": info.get("currentPrice"),
-            "degisim": f"{info.get('regularMarketChangePercent', 0):.2f}%",
-            "acilis": info.get("open"),
-            "kapanis": info.get("previousClose"),
-            "tavan": info.get("dayHigh"),
-            "taban": info.get("dayLow"),
-            "hacim": format_number(info.get("volume")),
-            "fk": info.get("trailingPE"),
-            "pddd": info.get("priceToBook"),
-            "piyasa": format_number(info.get("marketCap")),
         }
     except Exception as e:
         print("Price error:", e, flush=True)
         return None
+
 
 # === TRADINGVIEW ANALİZİ ===
 def get_tv_analysis(symbol):
