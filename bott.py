@@ -80,46 +80,40 @@ def get_price(symbol):
         print("Price error:", e)
         return None
 
+
 # === TRADINGVIEW TEKNİK ANALİZ (RSI, MACD, ÖNERİ) ===
 from tradingview_ta import TA_Handler, Interval
 
 def get_tradingview_analysis(symbol: str) -> str:
-    """
-    TradingView'den anlık teknik analiz: RSI, MACD yönü ve genel öneri.
-    Hata olsa bile kullanıcıya düzgün bir satır döner (mesaj kırılmaz).
-    """
+    """TradingView'den anlık teknik analiz: RSI, MACD yönü ve genel öneri."""
     try:
         sym = symbol.upper()
         handler = TA_Handler(
-            symbol=f"{sym}.IS",     # örn: ASELS.IS
-            screener="turkey",      # BIST için doğru screener
-            exchange="BIST",        # Borsa İstanbul
-            interval=Interval.INTERVAL_1_HOUR  # daha "anlık" analiz
+            symbol=sym,  # .IS ekleme — TradingView zaten Borsa Istanbul'da tanıyor
+            screener="turkey",
+            exchange="Borsa Istanbul",
+            interval=Interval.INTERVAL_1_HOUR
         )
         analysis = handler.get_analysis()
-        summary = analysis.summary  # {"RECOMMENDATION": "BUY" | "SELL" | "NEUTRAL" | "STRONG_BUY"...}
-
-        # bazı göstergeler dictionary'de olmayabilir; güvenle al
+        summary = analysis.summary or {}
         indicators = analysis.indicators or {}
+
         rsi = indicators.get("RSI")
         macd = indicators.get("MACD.macd")
         macd_signal = indicators.get("MACD.signal")
 
-        # RSI metni
-        rsi_txt = f"{round(rsi,2)}" if isinstance(rsi, (int, float)) else "—"
-        # MACD yönü
-        if isinstance(macd, (int, float)) and isinstance(macd_signal, (int, float)):
-            macd_dir = "Al" if macd > macd_signal else "Sat"
-        else:
-            macd_dir = "—"
-
+        rsi_txt = f"{round(rsi, 2)}" if isinstance(rsi, (int, float)) else "—"
+        macd_dir = "Al" if macd and macd_signal and macd > macd_signal else "Sat"
         rec = summary.get("RECOMMENDATION", "—")
+
         return f"📊 RSI: {rsi_txt} | MACD: {macd_dir} | Öneri: {rec}"
+
     except Exception as e:
         print("TradingView error:", e)
         return "📊 Teknik analiz alınamadı."
 
-# === HABERLER (OPSİYONEL: Google News RSS) ===
+
+# === HABERLER ===
 def get_news(symbol):
     try:
         url = f"https://news.google.com/rss/search?q={symbol}+Borsa+İstanbul+OR+hisse&hl=tr&gl=TR&ceid=TR:tr"
@@ -144,6 +138,7 @@ def get_news(symbol):
     except Exception as e:
         print("News error:", e)
         return "📰 Haberler alınamadı."
+
 
 # === MESAJ OLUŞTUR ===
 def build_message(symbol):
@@ -191,7 +186,7 @@ def build_message(symbol):
         if detay:
             lines.append(" | ".join(detay))
 
-    # === TRADINGVIEW TEKNİK ANALİZİ ===
+    # === TRADINGVIEW TEKNİK ANALİZ ===
     tech = get_tradingview_analysis(symbol)
     lines.append("\n" + tech)
 
@@ -203,11 +198,11 @@ def build_message(symbol):
 
     return "\n".join(lines)
 
+
 # === ANA DÖNGÜ ===
 def main():
-    print("🚀 Borsa İstanbul Botu (PytonAnywhere Sürümü) çalışıyor...")
+    print("🚀 Borsa İstanbul Botu çalışıyor...")
     last_update_id = None
-
     while True:
         updates = get_updates(last_update_id)
         if "result" in updates and updates["result"]:
@@ -236,7 +231,6 @@ def home():
     return "✅ Bot aktif, Render portu açık!", 200
 
 def run():
-    # Render bazen farklı port verir, bunu otomatik algılayalım
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
@@ -244,4 +238,3 @@ Thread(target=run).start()
 
 if __name__ == "__main__":
     main()
-
