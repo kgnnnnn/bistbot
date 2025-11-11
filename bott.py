@@ -332,7 +332,7 @@ def build_message(symbol):
         lines.append(f"\n\n📎 <a href='{info['url']}'>Kaynak: Yahoo Finance</a>")
 
     # --- Görüş / İletişim ---
-    lines.append("\n\n💬 Görüş & Öneri: @kriptosbtc")
+    lines.append("\n\n<b>💬 Görüş & Öneri:</b> @kriptosbtc")
 
     return "\n".join(lines)
 
