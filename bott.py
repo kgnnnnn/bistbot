@@ -243,10 +243,10 @@ def main():
             if text.lower() == "/start":
                 msg = (
                     "👋 <b>Kriptos BIST100 Takip Botu'na Hoş Geldin!</b>\n\n"
-                    "💬 Sadece hisse kodunu (örnek: ASELS, THYAO...) yazın.\n"
+                    "💬 Sadece hisse kodunu (örnek: ASELS, THYAO...) yazın.\n\n"
                     "Algoritmamız fiyat, güncel haberler, hacim vb. bilgileri iletir.\n\n"
                     "Yapay zeka destekli algoritmamız RSI ve EMA indikatör analizleri yapar ve (al-sat-vb.) önermeler üretir.\n\n"
-                    "⚙️ Veriler: TradingView & Yahoo Finance'den sağlanmaktadır\n\n"
+                    "⚙️ Veriler: TradingView & Yahoo Finance'den sağlanmaktadır.\n\n"
                     "❗️UYARI: Algoritmalar yanılabilir! Bilgiler kesinlikle YATIRIM TAVSİYESİ kapsamında değildir!\n\n"
                     "📊 Komut örneği: <b>ASELS/asels</b>"
                 )
