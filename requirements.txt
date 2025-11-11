@@ -1,5 +1,7 @@
 requests
 yfinance
 datetime
+pandas
+numpy
 flask
 
