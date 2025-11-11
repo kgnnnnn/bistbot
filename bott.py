@@ -1,19 +1,28 @@
-# bott.py (tam hazır sürüm)
+# bott.py
+import os
 import time
 import random
 import requests
 import yfinance as yf
-import pandas as pd
-import numpy as np
 from flask import Flask
 from threading import Thread
-import os
 
-# === AYARLAR ===
+# =========================
+# AYARLAR
+# =========================
 BOT_TOKEN = "8116276773:AAHoSQAthKmijTE62bkqtGQNACf0zi0JuCs"
 URL = f"https://api.telegram.org/bot{BOT_TOKEN}/"
 
-# === TELEGRAM ===
+# RapidAPI anahtarı (ENV > sabit)
+RAPID_KEY = os.environ.get(
+    "RAPIDAPI_KEY",
+    "1749e090ffmsh612a371009ddbcap1c2f2cjsnaa23aba94831"
+)
+RAPID_HOST = "tradingview-real-time.p.rapidapi.com"
+
+# =========================
+# TELEGRAM
+# =========================
 def get_updates(offset=None):
     try:
         params = {"timeout": 100, "offset": offset}
@@ -40,7 +49,9 @@ def send_message(chat_id, text):
     except Exception as e:
         print("Send error:", e, flush=True)
 
-# === SAYI BİÇİMLENDİRME ===
+# =========================
+# FİYAT (Yahoo Finance)
+# =========================
 def format_number(num):
     try:
         if num in (None, "—"):
@@ -54,10 +65,10 @@ def format_number(num):
     except Exception:
         return None
 
-# === YAHOO FİNANCE VERİSİ ===
 def get_price(symbol):
+    """Anlık fiyatı Yahoo Finance'tan çeker."""
     try:
-        time.sleep(random.uniform(0.5, 1.2))
+        time.sleep(random.uniform(0.4, 1.0))
         ticker = yf.Ticker(symbol.upper() + ".IS")
         info = ticker.info
         if not info or "currentPrice" not in info:
@@ -80,91 +91,80 @@ def get_price(symbol):
         print("Price error:", e, flush=True)
         return None
 
-# === BASİT RSI (yfinance fallback) ===
-def get_rsi_fallback(symbol: str, period: int = 14, lookback_months: int = 3):
-    """yfinance kullanarak RSI hesaplar — her zaman sonuç döner."""
-    import numpy as np
-    import pandas as pd
-    sym = symbol.upper() + ".IS"
-
+# =========================
+# TEKNİK (TradingView Real-Time via RapidAPI)
+# Endpoint: GET /technicals/summary?query=<SYMBOL>
+# =========================
+def get_tradingview_analysis(symbol: str) -> str:
     try:
-        df = yf.download(sym, period=f"{lookback_months}mo", interval="1d", progress=False)
-        if df is None or df.empty or "Close" not in df.columns:
-            return "📊 RSI: veri alınamadı (yfinance)."
+        params = {"query": symbol.upper()}
+        headers = {
+            "x-rapidapi-key": RAPID_KEY,
+            "x-rapidapi-host": RAPID_HOST,
+        }
+        print(f"📡 TV /technicals/summary -> {params}", flush=True)
+        r = requests.get(
+            f"https://{RAPID_HOST}/technicals/summary",
+            params=params,
+            headers=headers,
+            timeout=8,
+        )
+        raw = r.text
+        print("TV raw (prefix):", raw[:600], flush=True)
 
-        close = df["Close"].dropna()
-        if len(close) < period + 1:
-            return "📊 RSI: veri yetersiz."
-
-        delta = close.diff()
-        gain = delta.where(delta > 0, 0.0)
-        loss = -delta.where(delta < 0, 0.0)
-
-        avg_gain = gain.rolling(window=period, min_periods=period).mean()
-        avg_loss = loss.rolling(window=period, min_periods=period).mean()
-
-        # Son değerleri güvenli çek
-        last_gain = avg_gain.iloc[-1]
-        last_loss = avg_loss.iloc[-1]
-
-        # Eğer bunlar bir Series veya NaN ise güvenli şekilde sıfırla
-        try:
-            last_gain = float(last_gain) if np.isfinite(last_gain) else 0.0
-        except:
-            last_gain = 0.0
-        try:
-            last_loss = float(last_loss) if np.isfinite(last_loss) and last_loss != 0 else 1e-9
-        except:
-            last_loss = 1e-9
-
-        rs = last_gain / (last_loss if last_loss != 0 else 1e-9)
-        rsi = 100 - (100 / (1 + rs))
-        rsi = round(float(rsi), 2)
-
-        # Yorum
-        if rsi >= 70:
-            rec = "Sat"
-        elif rsi <= 30:
-            rec = "Al"
-        else:
-            rec = "Nötr"
-
-        return f"📊 RSI: {rsi} ({rec})"
-
-    except Exception as e:
-        print("RSI fallback error:", e, flush=True)
-        return "📊 RSI: hesaplanamadı."
-
-
-# === TRADINGVIEW (RapidAPI) + fallback to RSI ===
-def get_tradingview_analysis(symbol):
-    # İlk adım: RapidAPI TradingView (eğer ayarlıysa)
-    url = "https://tradingview-real-time.p.rapidapi.com/technicalSummary"
-    query = {"symbol": f"{symbol}:BIST"}
-    headers = {
-        "x-rapidapi-key": "1749e090ffmsh612a371009ddbcap1c2f2cjsnaa23aba94831",
-        "x-rapidapi-host": "tradingview-real-time.p.rapidapi.com"
-    }
-
-    try:
-        print(f"📡 TradingView isteği -> {symbol}:BIST", flush=True)
-        r = requests.get(url, headers=headers, params=query, timeout=8)
-        print("TradingView raw response (prefix):", r.text[:1000], flush=True)  # logu çok uzatma
+        # Beklenen yanıt esnek: bazen data list/dict olabilir.
         data = r.json()
-        summary = data.get("data", {}).get("technical_summary")
-        if summary:
-            return f"📊 TradingView: {summary}"
-        alt = data.get("summary") or data.get("signal") or data.get("recommendation")
-        if alt:
-            return f"📊 TradingView: {alt}"
-        print("TradingView: teknik alan yok, fallback RSI.", flush=True)
+
+        entry = None
+        if isinstance(data, dict):
+            # Örn: {"data":[{...}]} veya {"data":{"symbols":[{...}]}}
+            d = data.get("data")
+            if isinstance(d, list) and d:
+                entry = d[0]
+            elif isinstance(d, dict):
+                syms = d.get("symbols")
+                if isinstance(syms, list) and syms:
+                    entry = syms[0]
+            # Bazı varyantlarda doğrudan alanlar üst düzeyde olabilir
+            if entry is None and any(k in data for k in ("RSI", "MACD.macd", "Recommend.All")):
+                entry = data
+
+        if not isinstance(entry, dict):
+            return "📊 Teknik analiz bulunamadı (TradingView)."
+
+        rsi = entry.get("RSI")
+        macd = entry.get("MACD.macd")
+        macd_signal = entry.get("MACD.signal")
+        rec = entry.get("Recommend.All") or entry.get("Recommend.All".lower()) or entry.get("recommendation")
+
+        # RSI metni
+        if isinstance(rsi, (int, float)):
+            if rsi > 70:
+                rsi_txt = f"RSI: {rsi:.2f} (Aşırı Alım)"
+            elif rsi < 30:
+                rsi_txt = f"RSI: {rsi:.2f} (Aşırı Satım)"
+            else:
+                rsi_txt = f"RSI: {rsi:.2f} (Nötr)"
+        else:
+            rsi_txt = "RSI: —"
+
+        # MACD yönü
+        if isinstance(macd, (int, float)) and isinstance(macd_signal, (int, float)):
+            macd_dir = "Al" if macd > macd_signal else "Sat"
+            macd_txt = f"MACD: {macd_dir}"
+        else:
+            macd_txt = "MACD: —"
+
+        rec_txt = f"Öneri: {rec}" if rec else "Öneri: —"
+        return f"📊 {rsi_txt} | {macd_txt} | {rec_txt}"
+
     except Exception as e:
         print("TradingView API error:", e, flush=True)
+        return "📊 Teknik analiz alınamadı (TradingView)."
 
-    # Fallback: yfinance ile RSI
-    return get_rsi_fallback(symbol)
-
-# === HABERLER (GOOGLE RSS) ===
+# =========================
+# HABERLER (Google RSS)
+# =========================
 def get_news(symbol):
     try:
         url = f"https://news.google.com/rss/search?q={symbol}+Borsa+İstanbul+OR+hisse&hl=tr&gl=TR&ceid=TR:tr"
@@ -180,20 +180,20 @@ def get_news(symbol):
         for item in items:
             title = item.find("title").text
             link = item.find("link").text
-            pub = item.find("pubDate").text[:16] if item.find("pubDate") is not None else ""
+            pub_el = item.find("pubDate")
+            pub = pub_el.text[:16] if pub_el is not None and pub_el.text else ""
             haberler.append(f"🔹 <a href='{link}'>{title}</a> ({pub})")
         return "\n".join(haberler)
     except Exception as e:
         print("News error:", e, flush=True)
         return "📰 Haberler alınamadı."
 
-# === MESAJ OLUŞTUR ===
+# =========================
+# MESAJ OLUŞTUR
+# =========================
 def build_message(symbol):
     symbol = symbol.strip().upper()
     info = get_price(symbol)
-    news = get_news(symbol)
-    analysis = get_tradingview_analysis(symbol)
-
     if not info:
         return f"⚠️ {symbol} için veri alınamadı veya desteklenmiyor."
 
@@ -203,89 +203,118 @@ def build_message(symbol):
         lines.append(f"💰 Fiyat: {info['fiyat']} TL")
     if info.get("degisim") and info["degisim"] != "0.00%":
         lines.append(f"📉 Değişim: {info['degisim']}")
-    if info.get("acilis") is not None or info.get("kapanis") is not None:
-        satir = []
-        if info.get("acilis") is not None:
-            satir.append(f"Açılış: {info['acilis']}")
-        if info.get("kapanis") is not None:
-            satir.append(f"Kapanış: {info['kapanis']}")
+
+    satir = []
+    if info.get("acilis") is not None:
+        satir.append(f"Açılış: {info['acilis']}")
+    if info.get("kapanis") is not None:
+        satir.append(f"Kapanış: {info['kapanis']}")
+    if satir:
         lines.append("📊 " + " | ".join(satir))
-    if info.get("tavan") is not None or info.get("taban") is not None:
-        satir = []
-        if info.get("tavan") is not None:
-            satir.append(f"🔼 Tavan: {info['tavan']}")
-        if info.get("taban") is not None:
-            satir.append(f"🔽 Taban: {info['taban']}")
-        lines.append(" | ".join(satir))
+
+    hi_lo = []
+    if info.get("tavan") is not None:
+        hi_lo.append(f"🔼 Tavan: {info['tavan']}")
+    if info.get("taban") is not None:
+        hi_lo.append(f"🔽 Taban: {info['taban']}")
+    if hi_lo:
+        lines.append(" | ".join(hi_lo))
+
     if info.get("hacim"):
         lines.append(f"💸 Hacim: {info['hacim']}")
     if info.get("piyasa"):
         lines.append(f"🏢 Piyasa Değeri: {info['piyasa']}")
     if info.get("fk") or info.get("pddd"):
-        detay = []
+        det = []
         if info.get("fk"):
-            detay.append(f"📗 F/K: {info['fk']}")
+            det.append(f"📗 F/K: {info['fk']}")
         if info.get("pddd"):
-            detay.append(f"📘 PD/DD: {info['pddd']}")
-        if detay:
-            lines.append(" | ".join(detay))
+            det.append(f"📘 PD/DD: {info['pddd']}")
+        if det:
+            lines.append(" | ".join(det))
 
-    # Teknik analiz (TradingView veya RSI fallback)
-    lines.append("\n" + analysis)
+    # Teknik analiz (TradingView)
+    tech = get_tradingview_analysis(symbol)
+    lines.append("\n" + tech)
+
     # Haberler
+    news = get_news(symbol)
     lines.append("\n" + news)
+
     # Kaynak
     lines.append(f"\n📎 <a href='{info['url']}'>Kaynak: Yahoo Finance</a>")
+
     return "\n".join(lines)
 
-# === ANA DÖNGÜ (duplicate engelleme, offset doğru kullanımı) ===
+# =========================
+# ANA DÖNGÜ — ÇİFT MESAJ ENGELLEME
+# =========================
 def main():
     print("🚀 Borsa İstanbul Botu çalışıyor...", flush=True)
     last_update_id = None
-    processed_updates = set()
+    processed = set()
+
     while True:
-        updates = get_updates(last_update_id)
-        if not updates:
-            time.sleep(1)
+        data = get_updates(last_update_id)
+        results = data.get("result", [])
+        if not results:
+            time.sleep(0.5)
             continue
 
-        results = updates.get("result", [])
-        # sıralı işleme
+        # Günceli öncele, sırala
         results.sort(key=lambda x: x.get("update_id", 0))
+
+        max_uid = last_update_id or 0
         for item in results:
             uid = item.get("update_id")
-            if uid in processed_updates:
-                continue
-            processed_updates.add(uid)
-            last_update_id = uid + 1
-
-            message = item.get("message", {}) or {}
-            chat_id = message.get("chat", {}).get("id")
-            text = (message.get("text") or "").strip()
-            if not text:
+            if uid in processed:
                 continue
 
-            print(f"Gelen istek: {text}", flush=True)
-            # sadece komut/sembol kısmını al (örn: "SASA" veya "/sasa" vs.)
-            symbol = text.split()[0].lstrip("/")
-            reply = build_message(symbol)
-            send_message(chat_id, reply)
-            time.sleep(1.0)  # Telegram rate kontrolü
+            processed.add(uid)
+            if uid and uid > max_uid:
+                max_uid = uid
 
-        time.sleep(0.5)
+            msg = item.get("message") or {}
+            chat_id = (msg.get("chat") or {}).get("id")
+            text = (msg.get("text") or "").strip()
+            if not chat_id or not text:
+                continue
 
-# === KEEP ALIVE (Flask) ===
+            symbol = text.split()[0].lstrip("/").upper()
+            print(f"Gelen istek: {symbol}", flush=True)
+
+            try:
+                reply = build_message(symbol)
+                send_message(chat_id, reply)
+            except Exception as e:
+                print("build/send error:", e, flush=True)
+
+            # Telegram rate
+            time.sleep(0.8)
+
+        # offset’i ileri al — aynı batch tekrar gelmesin
+        if max_uid:
+            last_update_id = max_uid + 1
+
+        # processed kümesini şişirmemek için ara sıra temizleyebilirsin
+        if len(processed) > 2000:
+            processed = set(list(processed)[-1000:])
+
+        time.sleep(0.3)
+
+# =========================
+# KEEP ALIVE (Flask)
+# =========================
 app = Flask(__name__)
 
-@app.route('/')
+@app.route("/")
 def home():
     return "✅ Bot aktif, Render portu açık!", 200
 
 def run():
     port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host="0.0.0.0", port=port)
 
-# Başlat
 Thread(target=run).start()
 
 if __name__ == "__main__":
