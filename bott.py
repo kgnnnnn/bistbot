@@ -161,16 +161,18 @@ def get_balance_summary(symbol):
         kar_marji = (net_kar / ciro * 100) if net_kar and ciro else None
 
         return {
-            "period": str(last_col),
+            "period": last_col.strftime("%Y-%m-%d") if hasattr(last_col, "strftime") else str(last_col),
             "net_kar": net_kar,
             "ciro": ciro,
             "ozsermaye": ozsermaye,
             "borc_orani": borc_orani,
             "kar_marji": kar_marji,
         }
+
     except Exception as e:
         print("Finansal veri hatası:", e)
         return None
+
 
 # =============== MESAJ OLUŞTURMA ===============
 def build_message(symbol):
