@@ -176,38 +176,23 @@ def build_message(symbol):
         if info.get("pddd") is not None: fkpddd.append(f"📘 PD/DD: {info['pddd']}")
         if fkpddd: lines.append(" | ".join(fkpddd))
 
-    # --- Teknik (RSI/EMA → ÖNERİ) ---
-   # --- Teknik (RSI/EMA → ÖNERİ, 1 SAAT) ---
-if tech and (tech.get("rsi") is not None or (tech.get("ema50") is not None and tech.get("ema200") is not None)):
-    rsi_val = tech.get("rsi")
-    ema50   = tech.get("ema50")
-    ema200  = tech.get("ema200")
+    # --- Teknik (RSI/EMA → ÖNERİ, 1 SAAT) ---
+    if tech and (tech.get("rsi") is not None or (tech.get("ema50") is not None and tech.get("ema200") is not None)):
+        rsi_val = tech.get("rsi")
+        ema50   = tech.get("ema50")
+        ema200  = tech.get("ema200")
 
-    rsi_label = map_rsi_label(rsi_val)
+        rsi_label = map_rsi_label(rsi_val)
+        ema_sig   = map_ema_signal(ema50, ema200)
+        overall   = combine_recommendation(ema_sig, rsi_label)
 
-    # 🔥 EMA kesişim kontrolü (değer yazmadan)
-    ema_sig = "NÖTR"
-    try:
-        if ema50 is not None and ema200 is not None:
-            e50 = float(ema50)
-            e200 = float(ema200)
-            if e50 > e200:
-                ema_sig = "AL"
-            elif e50 < e200:
-                ema_sig = "SAT"
-    except:
-        ema_sig = "NÖTR"
-
-    overall = combine_recommendation(ema_sig, rsi_label)
-
-    parts = []
-    parts.append(f"RSI: {round(float(rsi_val),2) if rsi_val is not None else '—'} ({rsi_label}, 1 Saat)")
-    parts.append(f"EMA: {ema_sig} (1 Saat)")
-    parts.append(f"Öneri: {overall}")
-    lines.append("\n📊 " + " | ".join(parts))
-else:
-    lines.append("\n📊 Teknik analiz alınamadı (1 Saat).")
-
+        parts = []
+        parts.append(f"RSI (1s): {round(float(rsi_val),2) if rsi_val is not None else '—'} ({rsi_label})")
+        parts.append(f"EMA (1s): {ema_sig}")
+        parts.append(f"Öneri: {overall}")
+        lines.append("\n📊 " + " | ".join(parts))
+    else:
+        lines.append("\n📊 Teknik analiz alınamadı (1s).")
 
     # --- Haberler ---
     lines.append("\n" + get_news(symbol))
