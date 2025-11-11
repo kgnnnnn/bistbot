@@ -160,8 +160,25 @@ def get_balance_summary(symbol):
         borc_orani = (borc / ozsermaye * 100) if borc and ozsermaye else None
         kar_marji = (net_kar / ciro * 100) if net_kar and ciro else None
 
+        # --- Tarih formatı ve çeyrek hesaplama ---
+        if hasattr(last_col, "strftime"):
+            tarih = last_col.strftime("%d/%m/%Y")  # Türk tarih formatı
+            ay = int(last_col.strftime("%m"))
+            yil = int(last_col.strftime("%Y"))
+            if 1 <= ay <= 3:
+                ceyrek = "1. Çeyrek"
+            elif 4 <= ay <= 6:
+                ceyrek = "2. Çeyrek"
+            elif 7 <= ay <= 9:
+                ceyrek = "3. Çeyrek"
+            else:
+                ceyrek = "4. Çeyrek"
+            period_text = f"{yil} {ceyrek} ({tarih})"
+        else:
+            period_text = str(last_col)
+
         return {
-            "period": last_col.strftime("%Y-%m-%d") if hasattr(last_col, "strftime") else str(last_col),
+            "period": period_text,
             "net_kar": net_kar,
             "ciro": ciro,
             "ozsermaye": ozsermaye,
