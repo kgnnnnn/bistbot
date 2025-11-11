@@ -190,7 +190,6 @@ def get_balance_summary(symbol):
         print("Finansal veri hatası:", e)
         return None
 
-
 # =============== MESAJ OLUŞTURMA ===============
 def build_message(symbol):
     symbol = symbol.strip().upper()
@@ -245,14 +244,14 @@ def build_message(symbol):
             f"🔄 EMA(G): {ema_sig}",
             f"🤖 <b>Kriptos AI:</b> {overall}"
         ]
-        lines.append("📊 <b>Teknik Analiz Sonuçları:</b>\n" + "\n".join(parts))
+        lines.append("\n\n📊 <b>Teknik Analiz Sonuçları:</b>\n" + "\n".join(parts))
     else:
-        lines.append("\n📊 Teknik analiz alınamadı.")
+        lines.append("\n\n📊 Teknik analiz alınamadı.")
 
     # --- Temel Finansal Veriler (Bilanço Özeti) ---
     fin = get_balance_summary(symbol)
     if fin:
-        lines.append("\n🏦 <b>Bilanço Özeti</b>")
+        lines.append("\n\n🏦 <b>Bilanço Özeti</b>")
         lines.append(f"📅 Dönem: {fin['period']}")
         if fin.get('net_kar'):
             lines.append(f"💰 Net Kâr: {round(fin['net_kar']/1e9,2)} milyar TL")
@@ -266,16 +265,17 @@ def build_message(symbol):
             lines.append(f"📈 Kâr Marjı: %{round(fin['kar_marji'],1)}")
 
     # --- Haberler ---
-    lines.append("\n" + get_news(symbol))
+    lines.append("\n\n" + get_news(symbol))
 
     # --- Kaynak ---
     if info and info.get("url"):
-        lines.append(f"\n📎 <a href='{info['url']}'>Kaynak: Yahoo Finance</a>")
+        lines.append(f"\n\n📎 <a href='{info['url']}'>Kaynak: Yahoo Finance</a>")
 
     # --- Görüş / İletişim ---
-    lines.append("\n💬 Görüş & Öneri: @kriptosbtc")
+    lines.append("\n\n💬 Görüş & Öneri: @kriptosbtc")
 
     return "\n".join(lines)
+
 
 # =============== ANA DÖNGÜ (tek mesaj garantisi) ===============
 def main():
