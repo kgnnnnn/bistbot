@@ -80,22 +80,14 @@ def get_price(symbol):
         print("Price error:", e)
         return None
 
-# === TRADINGVIEW TEKNİK ANALİZ (RSI, MACD, ÖNERİ) ===
+# === TRADINGVIEW TEKNİK ANALİZ (Hibrit: RSI varsa RSI, yoksa MACD, en azından öneri) ===
 from tradingview_ta import TA_Handler, Interval
 
 def get_tradingview_analysis(symbol: str) -> str:
-    """
-    TradingView'den RSI, MACD ve genel öneri (BIST için garantili sürüm).
-    Farklı sembol formatlarını dener, bulamazsa düzgün mesaj döner.
-    """
     sym = symbol.upper()
-    possible_formats = [
-        f"BIST:{sym}",     # TradingView formatı (doğru olan çoğu zaman bu)
-        f"{sym}.BIST",     # bazen bu işe yarar
-        f"{sym}"           # son çare olarak direkt
-    ]
+    formats = [f"BIST:{sym}", f"{sym}.BIST", sym]
 
-    for s in possible_formats:
+    for s in formats:
         try:
             handler = TA_Handler(
                 symbol=s,
@@ -105,22 +97,43 @@ def get_tradingview_analysis(symbol: str) -> str:
             )
             analysis = handler.get_analysis()
 
-            # Göstergeleri güvenli al
             indicators = getattr(analysis, "indicators", {}) or {}
             summary = getattr(analysis, "summary", {}) or {}
 
+            # değerleri güvenli çek
             rsi = indicators.get("RSI")
             macd = indicators.get("MACD.macd")
             macd_signal = indicators.get("MACD.signal")
             rec = summary.get("RECOMMENDATION", "—")
 
-            # RSI / MACD verisi yoksa diğer formatı dene
-            if not all(isinstance(x, (int, float)) for x in [rsi, macd, macd_signal]):
-                print(f"⚠️ {s} formatında eksik veri — diğerini deniyor...")
-                continue
+            # RSI varsa
+            if isinstance(rsi, (int, float)):
+                if rsi > 70:
+                    rsi_comment = "Aşırı Alım"
+                elif rsi < 30:
+                    rsi_comment = "Aşırı Satım"
+                else:
+                    rsi_comment = "Nötr"
+                rsi_text = f"RSI: {round(rsi,2)} ({rsi_comment})"
+            else:
+                rsi_text = None
 
-            macd_dir = "Al" if macd > macd_signal else "Sat"
-            return f"📊 RSI: {round(rsi,2)} | MACD: {macd_dir} | Öneri: {rec}"
+            # MACD varsa
+            if isinstance(macd, (int, float)) and isinstance(macd_signal, (int, float)):
+                macd_dir = "Al" if macd > macd_signal else "Sat"
+                macd_text = f"MACD: {macd_dir}"
+            else:
+                macd_text = None
+
+            # hangi veriler mevcutsa onları birleştir
+            pieces = ["📊"]
+            if rsi_text:
+                pieces.append(rsi_text)
+            if macd_text:
+                pieces.append(macd_text)
+            pieces.append(f"Öneri: {rec}")
+
+            return " | ".join(pieces)
 
         except Exception as e:
             print(f"TradingView deneme hatası ({s}):", e)
