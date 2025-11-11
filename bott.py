@@ -198,44 +198,85 @@ def build_message(symbol):
     tech = get_tv_analysis(symbol)
     lines = [f"📈 <b>{symbol}</b> Hisse Özeti (BIST)"]
 
+    # --- Fiyat & temel bilgiler ---
     if info:
         if info.get("fiyat") is not None:
             lines.append(f"💰 Fiyat: {info['fiyat']} TL")
         if info.get("degisim") and info["degisim"] != "0.00%":
             lines.append(f"📉 Değişim: {info['degisim']}")
         satir = []
-        if info.get("acilis") is not None: satir.append(f"Açılış: {info['acilis']}")
-        if info.get("kapanis") is not None: satir.append(f"Kapanış: {info['kapanis']}")
-        if satir: lines.append("📊 " + " | ".join(satir))
+        if info.get("acilis") is not None:
+            satir.append(f"Açılış: {info['acilis']}")
+        if info.get("kapanis") is not None:
+            satir.append(f"Kapanış: {info['kapanis']}")
+        if satir:
+            lines.append("📊 " + " | ".join(satir))
         satir = []
-        if info.get("tavan") is not None: satir.append(f"🔼 Tavan: {info['tavan']}")
-        if info.get("taban") is not None: satir.append(f"🔽 Taban: {info['taban']}")
-        if satir: lines.append(" | ".join(satir))
-        if info.get("hacim"): lines.append(f"💸 Hacim: {info['hacim']}")
-        if info.get("piyasa"): lines.append(f"🏢 Piyasa Değeri: {info['piyasa']}")
+        if info.get("tavan") is not None:
+            satir.append(f"🔼 Tavan: {info['tavan']}")
+        if info.get("taban") is not None:
+            satir.append(f"🔽 Taban: {info['taban']}")
+        if satir:
+            lines.append(" | ".join(satir))
+        if info.get("hacim"):
+            lines.append(f"💸 Hacim: {info['hacim']}")
+        if info.get("piyasa"):
+            lines.append(f"🏢 Piyasa Değeri: {info['piyasa']}")
         fkpddd = []
-        if info.get("fk") is not None: fkpddd.append(f"📗 F/K: {info['fk']}")
-        if info.get("pddd") is not None: fkpddd.append(f"📘 PD/DD: {info['pddd']}")
-        if fkpddd: lines.append(" | ".join(fkpddd))
+        if info.get("fk") is not None:
+            fkpddd.append(f"📗 F/K: {info['fk']}")
+        if info.get("pddd") is not None:
+            fkpddd.append(f"📘 PD/DD: {info['pddd']}")
+        if fkpddd:
+            lines.append(" | ".join(fkpddd))
 
+    # --- Teknik Analiz ---
     if tech and (tech.get("rsi") is not None or (tech.get("ema50") and tech.get("ema200"))):
-    rsi_val = tech.get("rsi")
-    ema50 = tech.get("ema50")
-    ema200 = tech.get("ema200")
+        rsi_val = tech.get("rsi")
+        ema50 = tech.get("ema50")
+        ema200 = tech.get("ema200")
 
-    rsi_label = map_rsi_label(rsi_val)
-    ema_sig = map_ema_signal(ema50, ema200)
-    overall = combine_recommendation(ema_sig, rsi_label)
+        rsi_label = map_rsi_label(rsi_val)
+        ema_sig = map_ema_signal(ema50, ema200)
+        overall = combine_recommendation(ema_sig, rsi_label)
 
-    parts = [
-        f"📈 RSI(G): {round(float(rsi_val),2) if rsi_val else '—'} ({rsi_label})",
-        f"📊 EMA(G): {ema_sig}",
-        f"🤖 <b>Kriptos AI:</b> {overall}"
-    ]
+        parts = [
+            f"📈 RSI(G): {round(float(rsi_val),2) if rsi_val else '—'} ({rsi_label})",
+            f"📊 EMA(G): {ema_sig}",
+            f"🤖 <b>Kriptos AI:</b> {overall}"
+        ]
 
-    lines.append("\n📊 Teknik Analiz Sonuçları:\n" + "\n".join(parts))
-else:
-    lines.append("\n📊 Teknik analiz alınamadı.")
+        lines.append("\n📊 Teknik Analiz Sonuçları:\n" + "\n".join(parts))
+    else:
+        lines.append("\n📊 Teknik analiz alınamadı.")
+
+    # --- Temel Finansal Veriler (Bilanço Özeti) ---
+    fin = get_balance_summary(symbol)
+    if fin:
+        lines.append("\n🏦 <b>Bilanço Özeti</b>")
+        lines.append(f"📅 Dönem: {fin['period']}")
+        if fin.get('net_kar'):
+            lines.append(f"💰 Net Kâr: {round(fin['net_kar']/1e9,2)} milyar TL")
+        if fin.get('ciro'):
+            lines.append(f"💵 Ciro: {round(fin['ciro']/1e9,2)} milyar TL")
+        if fin.get('ozsermaye'):
+            lines.append(f"🏢 Özsermaye: {round(fin['ozsermaye']/1e9,2)} milyar TL")
+        if fin.get('borc_orani'):
+            lines.append(f"📊 Borç/Özsermaye: %{round(fin['borc_orani'],1)}")
+        if fin.get('kar_marji'):
+            lines.append(f"📈 Kâr Marjı: %{round(fin['kar_marji'],1)}")
+
+    # --- Haberler ---
+    lines.append("\n" + get_news(symbol))
+
+    # --- Kaynak ---
+    if info and info.get("url"):
+        lines.append(f"\n📎 <a href='{info['url']}'>Kaynak: Yahoo Finance</a>")
+
+    # --- Görüş / İletişim ---
+    lines.append("\n💬 Görüş & Öneri: @kriptosbtc")
+
+    return "\n".join(lines)
 
     # --- Temel Finansal Veriler (Bilanço Özeti) ---
     fin = get_balance_summary(symbol)
