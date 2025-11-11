@@ -46,7 +46,7 @@ def format_number(num):
 # === YAHOO FİNANCE VERİSİ ===
 def get_price(symbol):
     try:
-        time.sleep(random.uniform(1.0, 2.0))
+        time.sleep(random.uniform(3.0, 6.0))
         ticker = yf.Ticker(symbol.upper() + ".IS")
         data = ticker.history(period="1d")
         if data.empty:
