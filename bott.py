@@ -83,7 +83,7 @@ def analyze_news_with_ai(news_text):
         prompt = (
             "Aşağıda Borsa İstanbul'da işlem gören bir hisseye ait son haber başlıkları bulunuyor.\n"
             "Bu başlıkları analiz et; 1-2 cümlelik kısa bir Türkçe özet oluştur ve genel piyasa hissiyatını belirt (pozitif / negatif / nötr).\n"
-            "Yatırım tavsiyesi verme. Sonuçta '🧠 Kriptos AI Yorum:' etiketiyle başla.\n\n"
+            "Yatırım tavsiyesi verme. Sonuçta '🤖 <b>Kriptos AI Yorum:</b>' etiketiyle başla.\n\n"
             f"{news_text}"
         )
 
@@ -250,7 +250,7 @@ def build_message(symbol):
     symbol = symbol.strip().upper()
     info = get_price(symbol)
     tech = get_tv_analysis(symbol)
-    lines = [f"💹 <b>{symbol}</b> Hisse Özeti (BIST)"]
+    lines = [f"💹 <b>{symbol}</b> Hisse Özeti (BIST100)"]
 
     # --- Fiyat & temel bilgiler ---
     if info:
@@ -299,7 +299,7 @@ def build_message(symbol):
             f"🔄 EMA(G): {ema_sig}",
             f"🤖 <b>Kriptos AI:</b> {overall}"
         ]
-        lines.append("\n\n📊 <b>Teknik Analiz Sonuçları:</b>\n" + "\n".join(parts))
+        lines.append("\n\n📊 <b>Teknik Analiz Sonuçları</b>\n" + "\n".join(parts))
     else:
         lines.append("\n\n📊 Teknik analiz alınamadı.")
 
