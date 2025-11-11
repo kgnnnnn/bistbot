@@ -5,6 +5,23 @@ import datetime as dt
 import requests
 import yfinance as yf
 
+# === TRADINGVIEW TESTİ ===
+from tradingview_ta import TA_Handler, Interval, TradingView
+print("📡 TradingView bağlantı testi başlıyor...")
+
+try:
+    handler = TA_Handler(
+        symbol="BIST:ASELS",
+        screener="turkey",
+        exchange="Borsa Istanbul",
+        interval=Interval.INTERVAL_1_HOUR
+    )
+    analysis = handler.get_analysis()
+    print("✅ TradingView bağlantısı OK:", analysis.summary)
+except Exception as e:
+    print("❌ TradingView bağlantı hatası:", e)
+
+
 # === AYARLAR ===
 BOT_TOKEN = "8116276773:AAHoSQAthKmijTE62bkqtGQNACf0zi0JuCs"
 URL = f"https://api.telegram.org/bot{BOT_TOKEN}/"
