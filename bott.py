@@ -196,14 +196,14 @@ def build_message(symbol):
     symbol = symbol.strip().upper()
     info = get_price(symbol)
     tech = get_tv_analysis(symbol)
-    lines = [f"📈 <b>{symbol}</b> Hisse Özeti (BIST)"]
+    lines = [f"💹 <b>{symbol}</b> Hisse Özeti (BIST)"]
 
     # --- Fiyat & temel bilgiler ---
     if info:
         if info.get("fiyat") is not None:
             lines.append(f"💰 Fiyat: {info['fiyat']} TL")
         if info.get("degisim") and info["degisim"] != "0.00%":
-            lines.append(f"📉 Değişim: {info['degisim']}")
+            lines.append(f"🧮 Değişim: {info['degisim']}")
         satir = []
         if info.get("acilis") is not None:
             satir.append(f"Açılış: {info['acilis']}")
@@ -241,8 +241,8 @@ def build_message(symbol):
         overall = combine_recommendation(ema_sig, rsi_label)
 
         parts = [
-            f"📈 RSI(G): {round(float(rsi_val),2) if rsi_val else '—'} ({rsi_label})",
-            f"📊 EMA(G): {ema_sig}",
+            f"⚡ RSI(G): {round(float(rsi_val),2) if rsi_val else '—'} ({rsi_label})",
+            f"🔄 EMA(G): {ema_sig}",
             f"🤖 <b>Kriptos AI:</b> {overall}"
         ]
         lines.append("📊 <b>Teknik Analiz Sonuçları:<b>\n" + "\n".join(parts))
