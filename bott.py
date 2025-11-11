@@ -4,6 +4,9 @@ import random
 import datetime as dt
 import requests
 import yfinance as yf
+from flask import Flask
+from threading import Thread
+import os
 
 # === AYARLAR ===
 BOT_TOKEN = "8116276773:AAHoSQAthKmijTE62bkqtGQNACf0zi0JuCs"
@@ -27,7 +30,6 @@ def send_message(chat_id, text):
 
 # === SAYI BİÇİMLENDİRME ===
 def format_number(num):
-    """Büyük sayıları 1.234.567 biçiminde döndürür."""
     try:
         if num in (None, "—"):
             return None
@@ -42,7 +44,6 @@ def format_number(num):
 
 # === YAHOO FİNANCE VERİSİ ===
 def get_price(symbol):
-    """Yalnızca Yahoo Finance'tan güvenilir veri çeker"""
     try:
         time.sleep(random.uniform(1.0, 2.0))
         ticker = yf.Ticker(symbol.upper() + ".IS")
@@ -51,98 +52,52 @@ def get_price(symbol):
         if not info or "currentPrice" not in info:
             return None
 
-        fiyat = info.get("currentPrice")
-        degisim = info.get("regularMarketChangePercent")
-        acilis = info.get("open")
-        kapanis = info.get("previousClose")
-        tavan = info.get("dayHigh")
-        taban = info.get("dayLow")
-        hacim = info.get("volume")
-        fk = info.get("trailingPE")
-        pddd = info.get("priceToBook")
-        piyasa = info.get("marketCap")
-
         return {
             "url": f"https://finance.yahoo.com/quote/{symbol}.IS",
-            "fiyat": fiyat,
-            "degisim": f"{degisim:.2f}%" if degisim is not None else None,
-            "acilis": acilis,
-            "kapanis": kapanis,
-            "tavan": tavan,
-            "taban": taban,
-            "hacim": format_number(hacim),
-            "fk": fk,
-            "pddd": pddd,
-            "piyasa": format_number(piyasa),
+            "fiyat": info.get("currentPrice"),
+            "degisim": f"{info.get('regularMarketChangePercent', 0):.2f}%",
+            "acilis": info.get("open"),
+            "kapanis": info.get("previousClose"),
+            "tavan": info.get("dayHigh"),
+            "taban": info.get("dayLow"),
+            "hacim": format_number(info.get("volume")),
+            "fk": info.get("trailingPE"),
+            "pddd": info.get("priceToBook"),
+            "piyasa": format_number(info.get("marketCap")),
         }
 
     except Exception as e:
         print("Price error:", e)
         return None
 
-# === TRADINGVIEW TEKNİK ANALİZ (Hibrit: RSI varsa RSI, yoksa MACD, en azından öneri) ===
-from tradingview_ta import TA_Handler, Interval
+# === INVESTING.COM TEKNİK ANALİZ ===
+def get_investing_analysis(symbol):
+    url = "https://investing-real-time.p.rapidapi.com/technicalSummary"
+    query = {"symbol": f"{symbol}:TR"}
+    headers = {
+        "x-rapidapi-key": "1749e090ffmsh612a371009ddbcap1c2f2cjsnaa23aba94831",
+        "x-rapidapi-host": "investing-real-time.p.rapidapi.com"
+    }
 
-def get_tradingview_analysis(symbol: str) -> str:
-    sym = symbol.upper()
-    formats = [f"BIST:{sym}", f"{sym}.BIST", sym]
+    try:
+        r = requests.get(url, headers=headers, params=query, timeout=10)
+        data = r.json()
+        print("Investing API yanıtı:", data)
 
-    for s in formats:
-        try:
-            handler = TA_Handler(
-                symbol=s,
-                screener="turkey",
-                exchange="Borsa Istanbul",
-                interval=Interval.INTERVAL_1_HOUR
-            )
-            analysis = handler.get_analysis()
+        # Bazı durumlarda teknik özet farklı alanda olur
+        if "summary" in data:
+            summary = data["summary"]
+            return f"📊 Investing Analizi: {summary}"
+        elif "technical_summary" in data.get("data", {}):
+            summary = data["data"]["technical_summary"]
+            return f"📊 Investing Analizi: {summary}"
+        else:
+            return "📊 Teknik analiz bulunamadı (Investing)."
+    except Exception as e:
+        print("Investing API error:", e)
+        return "📊 Teknik analiz alınamadı (Investing)."
 
-            indicators = getattr(analysis, "indicators", {}) or {}
-            summary = getattr(analysis, "summary", {}) or {}
-
-            # değerleri güvenli çek
-            rsi = indicators.get("RSI")
-            macd = indicators.get("MACD.macd")
-            macd_signal = indicators.get("MACD.signal")
-            rec = summary.get("RECOMMENDATION", "—")
-
-            # RSI varsa
-            if isinstance(rsi, (int, float)):
-                if rsi > 70:
-                    rsi_comment = "Aşırı Alım"
-                elif rsi < 30:
-                    rsi_comment = "Aşırı Satım"
-                else:
-                    rsi_comment = "Nötr"
-                rsi_text = f"RSI: {round(rsi,2)} ({rsi_comment})"
-            else:
-                rsi_text = None
-
-            # MACD varsa
-            if isinstance(macd, (int, float)) and isinstance(macd_signal, (int, float)):
-                macd_dir = "Al" if macd > macd_signal else "Sat"
-                macd_text = f"MACD: {macd_dir}"
-            else:
-                macd_text = None
-
-            # hangi veriler mevcutsa onları birleştir
-            pieces = ["📊"]
-            if rsi_text:
-                pieces.append(rsi_text)
-            if macd_text:
-                pieces.append(macd_text)
-            pieces.append(f"Öneri: {rec}")
-
-            return " | ".join(pieces)
-
-        except Exception as e:
-            print(f"TradingView deneme hatası ({s}):", e)
-            continue
-
-    return "📊 Teknik analiz alınamadı."
-
-
-# === HABERLER ===
+# === HABERLER (GOOGLE RSS) ===
 def get_news(symbol):
     try:
         url = f"https://news.google.com/rss/search?q={symbol}+Borsa+İstanbul+OR+hisse&hl=tr&gl=TR&ceid=TR:tr"
@@ -168,11 +123,11 @@ def get_news(symbol):
         print("News error:", e)
         return "📰 Haberler alınamadı."
 
-
 # === MESAJ OLUŞTUR ===
 def build_message(symbol):
     info = get_price(symbol)
     news = get_news(symbol)
+    analysis = get_investing_analysis(symbol)  # doğrudan Investing'den çek
 
     if not info:
         return f"⚠️ {symbol} için veri alınamadı veya desteklenmiyor."
@@ -181,7 +136,6 @@ def build_message(symbol):
 
     if info.get("fiyat"):
         lines.append(f"💰 Fiyat: {info['fiyat']} TL")
-
     if info.get("degisim") and info["degisim"] != "0.00%":
         lines.append(f"📉 Değişim: {info['degisim']}")
 
@@ -205,7 +159,6 @@ def build_message(symbol):
         lines.append(f"💸 Hacim: {info['hacim']}")
     if info.get("piyasa"):
         lines.append(f"🏢 Piyasa Değeri: {info['piyasa']}")
-
     if info.get("fk") or info.get("pddd"):
         detay = []
         if info.get("fk"):
@@ -215,22 +168,18 @@ def build_message(symbol):
         if detay:
             lines.append(" | ".join(detay))
 
-    # === TRADINGVIEW TEKNİK ANALİZ ===
-    tech = get_tradingview_analysis(symbol)
-    lines.append("\n" + tech)
-
+    # === TEKNİK ANALİZ (INVESTING) ===
+    lines.append("\n" + analysis)
     # === HABERLER ===
     lines.append("\n" + news)
-
     # === KAYNAK ===
     lines.append(f"\n📎 <a href='{info['url']}'>Kaynak: Yahoo Finance</a>")
 
     return "\n".join(lines)
 
-
 # === ANA DÖNGÜ ===
 def main():
-    print("🚀 Borsa İstanbul Botu çalışıyor...")
+    print("🚀 Borsa İstanbul Botu (Investing Entegre) çalışıyor...")
     last_update_id = None
     while True:
         updates = get_updates(last_update_id)
@@ -240,19 +189,13 @@ def main():
                 message = item.get("message", {})
                 chat_id = message.get("chat", {}).get("id")
                 text = message.get("text", "").strip().upper()
-
                 if text:
                     print(f"Gelen istek: {text}")
                     reply = build_message(text)
                     send_message(chat_id, reply)
-
                 time.sleep(2)
 
 # === KEEP ALIVE ===
-from flask import Flask
-from threading import Thread
-import os
-
 app = Flask(__name__)
 
 @app.route('/')
@@ -266,18 +209,4 @@ def run():
 Thread(target=run).start()
 
 if __name__ == "__main__":
-    print("📡 TradingView bağlantı testi başlıyor (Render log için)...")
-    try:
-        handler = TA_Handler(
-            symbol="BIST:ASELS",
-            screener="turkey",
-            exchange="Borsa Istanbul",
-            interval=Interval.INTERVAL_1_HOUR
-        )
-        analysis = handler.get_analysis()
-        print("✅ TradingView bağlantısı OK:", analysis.summary)
-    except Exception as e:
-        print("❌ TradingView bağlantı hatası:", e)
-
     main()
-
