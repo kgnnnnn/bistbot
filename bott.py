@@ -1,23 +1,22 @@
-# bistbot
+# === BISTBOT ===
 import time
 import random
-import datetime as dt
 import requests
 import yfinance as yf
 import pandas as pd
 import numpy as np
-
+from flask import Flask
+from threading import Thread
+import os
 
 # === AYARLAR ===
 BOT_TOKEN = "8116276773:AAHoSQAthKmijTE62bkqtGQNACf0zi0JuCs"
 URL = f"https://api.telegram.org/bot{BOT_TOKEN}/"
 
-
 # === TELEGRAM ===
 def get_updates(offset=None):
     params = {"timeout": 100, "offset": offset}
     return requests.get(URL + "getUpdates", params=params).json()
-
 
 def send_message(chat_id, text):
     requests.post(
@@ -30,10 +29,8 @@ def send_message(chat_id, text):
         },
     )
 
-
 # === SAYI BİÇİMLENDİRME ===
 def format_number(num):
-    """Büyük sayıları 1.234.567 biçiminde döndürür."""
     try:
         if num in (None, "—"):
             return None
@@ -46,10 +43,8 @@ def format_number(num):
     except Exception:
         return None
 
-
 # === YAHOO FİNANCE VERİSİ ===
 def get_price(symbol):
-    """Yalnızca Yahoo Finance'tan güvenilir veri çeker"""
     try:
         time.sleep(random.uniform(1.0, 2.0))
         ticker = yf.Ticker(symbol.upper() + ".IS")
@@ -58,75 +53,65 @@ def get_price(symbol):
         if not info or "currentPrice" not in info:
             return None
 
-        fiyat = info.get("currentPrice")
-        degisim = info.get("regularMarketChangePercent")
-        acilis = info.get("open")
-        kapanis = info.get("previousClose")
-        tavan = info.get("dayHigh")
-        taban = info.get("dayLow")
-        hacim = info.get("volume")
-        fk = info.get("trailingPE")
-        pddd = info.get("priceToBook")
-        piyasa = info.get("marketCap")
-
         return {
             "url": f"https://finance.yahoo.com/quote/{symbol}.IS",
-            "fiyat": fiyat,
-            "degisim": f"{degisim:.2f}%" if degisim is not None else None,
-            "acilis": acilis,
-            "kapanis": kapanis,
-            "tavan": tavan,
-            "taban": taban,
-            "hacim": format_number(hacim),
-            "fk": fk,
-            "pddd": pddd,
-            "piyasa": format_number(piyasa),
+            "fiyat": info.get("currentPrice"),
+            "degisim": f"{info.get('regularMarketChangePercent', 0):.2f}%",
+            "acilis": info.get("open"),
+            "kapanis": info.get("previousClose"),
+            "tavan": info.get("dayHigh"),
+            "taban": info.get("dayLow"),
+            "hacim": format_number(info.get("volume")),
+            "fk": info.get("trailingPE"),
+            "pddd": info.get("priceToBook"),
+            "piyasa": format_number(info.get("marketCap")),
         }
 
     except Exception as e:
         print("Price error:", e)
         return None
 
-#RSI MADC HESAPLAMA#
-
+# === TEKNİK ANALİZ ===
 def get_technical_analysis(symbol):
-    """RSI, MACD ve Hareketli Ortalama hesaplar."""
+    """RSI, MACD ve Hareketli Ortalamaları hesaplar"""
+    symbol = symbol.upper()
     try:
-        data = yf.download(symbol + ".IS", period="3mo", interval="1d", progress=False)
-        if data.empty:
-            return "Teknik veri alınamadı."
+        data = yf.download(symbol + ".IS", period="6mo", interval="1d", progress=False)
+        print(f"{symbol}: {len(data)} satır veri çekildi.")
+        if data.empty or len(data) < 50:
+            return "📊 Teknik analiz verisi alınamadı."
 
         close = data["Close"]
 
-        # RSI Hesapla
+        # RSI
         delta = close.diff()
-        gain = delta.where(delta > 0, 0)
-        loss = -delta.where(delta < 0, 0)
+        gain = delta.clip(lower=0)
+        loss = -delta.clip(upper=0)
         avg_gain = gain.rolling(14).mean()
         avg_loss = loss.rolling(14).mean()
         rs = avg_gain / avg_loss
         rsi = 100 - (100 / (1 + rs))
         last_rsi = round(rsi.iloc[-1], 2)
+        rsi_durum = "Aşırı Alım" if last_rsi > 70 else "Aşırı Satım" if last_rsi < 30 else "Nötr"
 
-        # MACD Hesapla
+        # MACD
         ema12 = close.ewm(span=12, adjust=False).mean()
         ema26 = close.ewm(span=26, adjust=False).mean()
         macd = ema12 - ema26
         signal = macd.ewm(span=9, adjust=False).mean()
         macd_signal = "Al" if macd.iloc[-1] > signal.iloc[-1] else "Sat"
 
-        # Hareketli Ortalamalar
+        # MA20 ve MA50
         ma20 = round(close.rolling(20).mean().iloc[-1], 2)
         ma50 = round(close.rolling(50).mean().iloc[-1], 2)
 
-        return f"📊 RSI: {last_rsi} | MACD: {macd_signal} | MA20: {ma20} | MA50: {ma50}"
+        return f"📊 RSI: {last_rsi} ({rsi_durum}) | MACD: {macd_signal} | MA20: {ma20} | MA50: {ma50}"
 
     except Exception as e:
         print("Technical error:", e)
-        return "Teknik analiz hesaplanamadı."
+        return "📊 Teknik analiz hesaplanamadı."
 
-
-# === HABERLER (OPSİYONEL: Google News RSS) ===
+# === HABERLER ===
 def get_news(symbol):
     try:
         url = f"https://news.google.com/rss/search?q={symbol}+Borsa+İstanbul+OR+hisse&hl=tr&gl=TR&ceid=TR:tr"
@@ -151,7 +136,6 @@ def get_news(symbol):
     except Exception as e:
         print("News error:", e)
         return "📰 Haberler alınamadı."
-
 
 # === MESAJ OLUŞTUR ===
 def build_message(symbol):
@@ -187,7 +171,6 @@ def build_message(symbol):
 
     if info.get("hacim"):
         lines.append(f"💸 Hacim: {info['hacim']}")
-
     if info.get("piyasa"):
         lines.append(f"🏢 Piyasa Değeri: {info['piyasa']}")
 
@@ -197,10 +180,9 @@ def build_message(symbol):
             detay.append(f"📗 F/K: {info['fk']}")
         if info.get("pddd"):
             detay.append(f"📘 PD/DD: {info['pddd']}")
-        if detay:
-            lines.append(" | ".join(detay))
+        lines.append(" | ".join(detay))
 
-    # === 📊 TEKNİK ANALİZ ÖZETİ ===
+    # === 📊 TEKNİK ANALİZ ===
     tech = get_technical_analysis(symbol)
     lines.append("\n" + tech)
 
@@ -212,12 +194,10 @@ def build_message(symbol):
 
     return "\n".join(lines)
 
-
 # === ANA DÖNGÜ ===
 def main():
-    print("🚀 Borsa İstanbul Botu (PytonAnywhere Sürümü) çalışıyor...")
+    print("🚀 Borsa İstanbul Botu çalışıyor...")
     last_update_id = None
-
     while True:
         updates = get_updates(last_update_id)
         if "result" in updates and updates["result"]:
@@ -231,14 +211,9 @@ def main():
                     print(f"Gelen istek: {text}")
                     reply = build_message(text)
                     send_message(chat_id, reply)
-
                 time.sleep(2)
 
 # === KEEP ALIVE ===
-from flask import Flask
-from threading import Thread
-import os
-
 app = Flask(__name__)
 
 @app.route('/')
@@ -246,7 +221,6 @@ def home():
     return "✅ Bot aktif, Render portu açık!", 200
 
 def run():
-    # Render bazen farklı port verir, bunu otomatik algılayalım
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
