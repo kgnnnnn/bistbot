@@ -52,7 +52,7 @@ def get_news(symbol):
         root = ET.fromstring(r.text)
         items = root.findall(".//item")[:3]
         if not items:
-            return "📰 Yeni haber bulunamadı."
+            return "📰 Lütfen Hisse Kodunu Doğru Giriniz. Örn: ASELS/asels"
         haberler = ["🗞️ <b>Son Haberler</b>"]
         for item in items:
             title = item.find("title").text
