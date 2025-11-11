@@ -4,6 +4,9 @@ import random
 import datetime as dt
 import requests
 import yfinance as yf
+import pandas as pd
+import numpy as np
+
 
 # === AYARLAR ===
 BOT_TOKEN = "8116276773:AAHoSQAthKmijTE62bkqtGQNACf0zi0JuCs"
