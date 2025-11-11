@@ -125,10 +125,11 @@ def combine_recommendation(ema_sig, rsi_label):
     return "NÖTR"
 
 def get_tv_analysis(symbol):
-    """TradingView'den 1 saatlik RSI, EMA50, EMA200 çeker."""
+    """TradingView'den RSI, EMA50, EMA200 çeker; yoksa None döner (fallback yok)."""
     try:
-        query = {"query": symbol.upper(), "interval": "1h"}  # 🔥 1 SAATLİK veriler
-        print(f"📡 TV /technicals/summary (1 Saat) -> {query}", flush=True)
+        query = {"query": symbol.upper()}
+        # Gerekli ama kısa log; flood yok
+        print(f"📡 TV /technicals/summary {query}", flush=True)
         r = requests.get(TV_URL, headers=TV_HEADERS, params=query, timeout=8)
         data = r.json()
         d = data.get("data") if isinstance(data, dict) else None
@@ -138,10 +139,9 @@ def get_tv_analysis(symbol):
                 "ema50": d.get("EMA50"),
                 "ema200": d.get("EMA200"),
             }
-    except Exception as e:
-        print("TradingView error:", e, flush=True)
+    except Exception:
+        pass
     return None
-
 
 # =============== MESAJ OLUŞTURMA ===============
 def build_message(symbol):
@@ -176,7 +176,7 @@ def build_message(symbol):
         if info.get("pddd") is not None: fkpddd.append(f"📘 PD/DD: {info['pddd']}")
         if fkpddd: lines.append(" | ".join(fkpddd))
 
-    # --- Teknik (RSI/EMA → ÖNERİ, 1 SAAT) ---
+    # --- Teknik (RSI/EMA → ÖNERİ) ---
     if tech and (tech.get("rsi") is not None or (tech.get("ema50") is not None and tech.get("ema200") is not None)):
         rsi_val = tech.get("rsi")
         ema50   = tech.get("ema50")
@@ -187,12 +187,15 @@ def build_message(symbol):
         overall   = combine_recommendation(ema_sig, rsi_label)
 
         parts = []
-        parts.append(f"RSI (1s): {round(float(rsi_val),2) if rsi_val is not None else '—'} ({rsi_label})")
-        parts.append(f"EMA (1s): {ema_sig}")
+        parts.append(f"RSI: {round(float(rsi_val),2) if rsi_val is not None else '—'} ({rsi_label})")
+        if ema50 is not None and ema200 is not None:
+            parts.append(f"EMA50: {round(float(ema50),2)} | EMA200: {round(float(ema200),2)} → EMA: {ema_sig}")
+        else:
+            parts.append("EMA50/EMA200: — → EMA: NÖTR")
         parts.append(f"Öneri: {overall}")
         lines.append("\n📊 " + " | ".join(parts))
     else:
-        lines.append("\n📊 Teknik analiz alınamadı (1s).")
+        lines.append("\n📊 Teknik analiz alınamadı.")
 
     # --- Haberler ---
     lines.append("\n" + get_news(symbol))
@@ -255,16 +258,8 @@ def run():
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
-if __name__ == "__main__":
-    # Önce Flask'ı arka planda başlat
-    t = Thread(target=run)
-    t.daemon = True
-    t.start()
+Thread(target=run).start()
 
-    # Sonra bot ana döngüsünü çalıştır
-    try:
-        main()
-    except Exception as e:
-        print("Main error:", e, flush=True)
-        time.sleep(5)
+if __name__ == "__main__":
+    main()
 
