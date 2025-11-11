@@ -245,7 +245,6 @@ def build_message(symbol):
             f"📊 EMA(G): {ema_sig}",
             f"🤖 <b>Kriptos AI:</b> {overall}"
         ]
-
         lines.append("\n📊 Teknik Analiz Sonuçları:\n" + "\n".join(parts))
     else:
         lines.append("\n📊 Teknik analiz alınamadı.")
@@ -277,6 +276,7 @@ def build_message(symbol):
     lines.append("\n💬 Görüş & Öneri: @kriptosbtc")
 
     return "\n".join(lines)
+
 
     # --- Temel Finansal Veriler (Bilanço Özeti) ---
     fin = get_balance_summary(symbol)
