@@ -239,6 +239,20 @@ def main():
             if not chat_id or not text:
                 continue
 
+            # 🟢 /start komutu için karşılama mesajı
+            if text.lower() == "/start":
+                msg = (
+                    "👋 <b>Kriptos BIST100 Takip Botu'na Hoş Geldin!</b>\n\n"
+                    "💬 Sadece hisse kodunu (örnek: ASELS, THYAO...) yazın.\n"
+                    "Algoritmamız fiyat, güncel haberler, hacim vb. bilgileri iletir.\n\n"
+                    "Yapay zeka destekli algoritmamız RSI ve EMA indikatör analizleri yapar ve (al-sat-vb.) önermeler üretir.\n\n"
+                    "⚙️ Veriler: TradingView & Yahoo Finance'den sağlanmaktadır\n"
+                    "❗️UYARI: Algoritmalar yanılabilir! Bilgiler kesinlikle YATIRIM TAVSİYESİ kapsamında değildir!\n\n"
+                    "📊 Komut örneği: <b>ASELS</b>"
+                )
+                send_message(chat_id, msg)
+                continue
+
             symbol = text.split()[0].lstrip("/").upper()
             print(f"Gelen istek: {symbol}", flush=True)
 
