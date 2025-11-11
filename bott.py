@@ -80,37 +80,53 @@ def get_price(symbol):
         print("Price error:", e)
         return None
 
-
 # === TRADINGVIEW TEKNİK ANALİZ (RSI, MACD, ÖNERİ) ===
 from tradingview_ta import TA_Handler, Interval
 
 def get_tradingview_analysis(symbol: str) -> str:
-    """TradingView'den anlık teknik analiz: RSI, MACD yönü ve genel öneri."""
-    try:
-        sym = symbol.upper()
-        handler = TA_Handler(
-            symbol=sym,  # .IS ekleme — TradingView zaten Borsa Istanbul'da tanıyor
-            screener="turkey",
-            exchange="Borsa Istanbul",
-            interval=Interval.INTERVAL_1_HOUR
-        )
-        analysis = handler.get_analysis()
-        summary = analysis.summary or {}
-        indicators = analysis.indicators or {}
+    """
+    TradingView'den RSI, MACD ve genel öneri (BIST için garantili sürüm).
+    Farklı sembol formatlarını dener, bulamazsa düzgün mesaj döner.
+    """
+    sym = symbol.upper()
+    possible_formats = [
+        f"BIST:{sym}",     # TradingView formatı (doğru olan çoğu zaman bu)
+        f"{sym}.BIST",     # bazen bu işe yarar
+        f"{sym}"           # son çare olarak direkt
+    ]
 
-        rsi = indicators.get("RSI")
-        macd = indicators.get("MACD.macd")
-        macd_signal = indicators.get("MACD.signal")
+    for s in possible_formats:
+        try:
+            handler = TA_Handler(
+                symbol=s,
+                screener="turkey",
+                exchange="Borsa Istanbul",
+                interval=Interval.INTERVAL_1_HOUR
+            )
+            analysis = handler.get_analysis()
 
-        rsi_txt = f"{round(rsi, 2)}" if isinstance(rsi, (int, float)) else "—"
-        macd_dir = "Al" if macd and macd_signal and macd > macd_signal else "Sat"
-        rec = summary.get("RECOMMENDATION", "—")
+            # Göstergeleri güvenli al
+            indicators = getattr(analysis, "indicators", {}) or {}
+            summary = getattr(analysis, "summary", {}) or {}
 
-        return f"📊 RSI: {rsi_txt} | MACD: {macd_dir} | Öneri: {rec}"
+            rsi = indicators.get("RSI")
+            macd = indicators.get("MACD.macd")
+            macd_signal = indicators.get("MACD.signal")
+            rec = summary.get("RECOMMENDATION", "—")
 
-    except Exception as e:
-        print("TradingView error:", e)
-        return "📊 Teknik analiz alınamadı."
+            # RSI / MACD verisi yoksa diğer formatı dene
+            if not all(isinstance(x, (int, float)) for x in [rsi, macd, macd_signal]):
+                print(f"⚠️ {s} formatında eksik veri — diğerini deniyor...")
+                continue
+
+            macd_dir = "Al" if macd > macd_signal else "Sat"
+            return f"📊 RSI: {round(rsi,2)} | MACD: {macd_dir} | Öneri: {rec}"
+
+        except Exception as e:
+            print(f"TradingView deneme hatası ({s}):", e)
+            continue
+
+    return "📊 Teknik analiz alınamadı."
 
 
 # === HABERLER ===
