@@ -1,14 +1,14 @@
 # bistbot.py
-import time, random, requests, yfinance as yf, os
+import time, random, os, requests, yfinance as yf
+import pandas as pd
+import numpy as np
 from flask import Flask
 from threading import Thread
-import xml.etree.ElementTree as ET
 
-# === AYARLAR ===
 BOT_TOKEN = "8116276773:AAHoSQAthKmijTE62bkqtGQNACf0zi0JuCs"
 URL = f"https://api.telegram.org/bot{BOT_TOKEN}/"
 
-# === TELEGRAM ===
+# =============== TELEGRAM ===============
 def get_updates(offset=None):
     try:
         r = requests.get(URL + "getUpdates", params={"timeout": 100, "offset": offset}, timeout=100)
@@ -19,17 +19,15 @@ def get_updates(offset=None):
 
 def send_message(chat_id, text):
     try:
-        r = requests.post(
+        requests.post(
             URL + "sendMessage",
             params={"chat_id": chat_id, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True},
             timeout=10,
         )
-        if r.status_code != 200:
-            print("SendMessage error:", r.status_code, r.text, flush=True)
     except Exception as e:
         print("Send error:", e, flush=True)
 
-# === SAYI BİÇİMLENDİRME ===
+# =============== YARDIMCI ===============
 def format_number(num):
     try:
         if num in (None, "—"):
@@ -43,172 +41,276 @@ def format_number(num):
     except Exception:
         return None
 
-# === FİYAT VERİSİ (YAHOO) ===
+# =============== FİYAT (Yahoo, retry'li) ===============
 def get_price(symbol):
-    try:
-        ticker = yf.Ticker(symbol.upper() + ".IS")
-        fi = ticker.fast_info  # daha hafif API
-        fiyat = fi.get("last_price", None)
-        degisim = fi.get("regular_market_percent_change", None)
-        if fiyat is None:
-            return None
-        return {
-            "fiyat": fiyat,
-            "degisim": f"{degisim:.2f}%" if degisim else "0.00%",
-            "url": f"https://finance.yahoo.com/quote/{symbol}.IS",
-        }
-    except Exception as e:
-        print("Price error:", e, flush=True)
-        return None
+    sym = symbol.upper() + ".IS"
+    for attempt in range(3):
+        try:
+            # küçük gecikme ve jitter
+            time.sleep(0.3 + 0.2 * attempt + random.uniform(0, 0.2))
+            ticker = yf.Ticker(sym)
+            info = ticker.info
+            if info and "currentPrice" in info and info["currentPrice"] is not None:
+                return {
+                    "url": f"https://finance.yahoo.com/quote/{symbol}.IS",
+                    "fiyat": info.get("currentPrice"),
+                    "degisim": f"{info.get('regularMarketChangePercent', 0) or 0:.2f}%",
+                    "acilis": info.get("open"),
+                    "kapanis": info.get("previousClose"),
+                    "tavan": info.get("dayHigh"),
+                    "taban": info.get("dayLow"),
+                    "hacim": format_number(info.get("volume")),
+                    "fk": info.get("trailingPE"),
+                    "pddd": info.get("priceToBook"),
+                    "piyasa": format_number(info.get("marketCap")),
+                }
+        except Exception as e:
+            print(f"Price error (try {attempt+1}/3):", e, flush=True)
+    return None
 
-
-# === TRADINGVIEW ANALİZİ ===
-def get_tv_analysis(symbol):
-    url = "https://tradingview-real-time.p.rapidapi.com/technicals/summary"
-    query = {"query": symbol.upper()}
-    headers = {
-        "x-rapidapi-key": "1749e090ffmsh612a371009ddbcap1c2f2cjsnaa23aba94831",
-        "x-rapidapi-host": "tradingview-real-time.p.rapidapi.com"
-    }
-    try:
-        print(f"📡 TV /technicals/summary -> {query}", flush=True)
-        r = requests.get(url, headers=headers, params=query, timeout=10)
-        print("TV raw (prefix):", r.text[:300], flush=True)
-        data = r.json()
-
-        if not data or "data" not in data or not isinstance(data["data"], dict):
-            print("⚠️ TV format hatası:", data, flush=True)
-            return "📊 Teknik analiz alınamadı (TradingView)."
-
-        d = data["data"]
-        rsi = round(d.get("RSI", 0), 2)
-        macd = round(d.get("MACD.macd", 0), 2)
-        rec = d.get("Recommend.All", "—")
-
-        if (rsi == 0 and macd == 0) or rec in ("", "—", None):
-            print("⚠️ Boş teknik veri geldi.", flush=True)
-            return "📊 Teknik analiz alınamadı (TradingView)."
-
-        return f"📊 RSI: {rsi} | MACD: {macd} | Öneri: {rec}"
-
-    except Exception as e:
-        print("TradingView error:", e, flush=True)
-        return "📊 Teknik analiz alınamadı (TradingView)."
-
-# === HABERLER ===
+# =============== HABERLER (Google RSS) ===============
 def get_news(symbol):
     try:
         url = f"https://news.google.com/rss/search?q={symbol}+Borsa+İstanbul+OR+hisse&hl=tr&gl=TR&ceid=TR:tr"
-        r = requests.get(url, timeout=10)
+        r = requests.get(url, timeout=8)
         if r.status_code != 200:
             return "📰 Haberler alınamadı."
-
+        import xml.etree.ElementTree as ET
         root = ET.fromstring(r.text)
         items = root.findall(".//item")[:3]
         if not items:
             return "📰 Yeni haber bulunamadı."
-
         haberler = ["🗞️ <b>Son Haberler</b>"]
         for item in items:
             title = item.find("title").text
             link = item.find("link").text
             pub = item.find("pubDate").text[:16] if item.find("pubDate") is not None else ""
             haberler.append(f"🔹 <a href='{link}'>{title}</a> ({pub})")
-
         return "\n".join(haberler)
     except Exception as e:
         print("News error:", e, flush=True)
         return "📰 Haberler alınamadı."
 
-# === MESAJ OLUŞTUR ===
-def build_message(symbol):
-    info = get_price(symbol)
-    analysis = get_tv_analysis(symbol)
-    news = get_news(symbol)
+# =============== TV: /technicals/summary ===============
+TV_URL = "https://tradingview-real-time.p.rapidapi.com/technicals/summary"
+TV_HEADERS = {
+    "x-rapidapi-key": "1749e090ffmsh612a371009ddbcap1c2f2cjsnaa23aba94831",
+    "x-rapidapi-host": "tradingview-real-time.p.rapidapi.com",
+}
 
+def map_rsi_to_label(rsi):
+    if rsi is None:
+        return "NÖTR"
+    try:
+        r = float(rsi)
+    except:
+        return "NÖTR"
+    if r <= 20:
+        return "GÜÇLÜ AL"
+    if r <= 30:
+        return "AL"
+    if r >= 85:
+        return "GÜÇLÜ SAT"
+    if r >= 70:
+        return "SAT"
+    return "NÖTR"
+
+def map_ema_signal(ema50, ema200):
+    try:
+        e50 = float(ema50)
+        e200 = float(ema200)
+        return "AL" if e50 >= e200 else "SAT"
+    except:
+        return "NÖTR"
+
+def combine_recommendation(ema_sig, rsi_label):
+    if ema_sig == "AL" and rsi_label in ("AL", "GÜÇLÜ AL"):
+        return "ALIŞ"
+    if ema_sig == "SAT" and rsi_label in ("SAT", "GÜÇLÜ SAT"):
+        return "SATIŞ"
+    return "NÖTR"
+
+def get_tv_analysis(symbol):
+    """TradingView'den RSI, EMA50, EMA200 çek; yoksa None döndür."""
+    try:
+        query = {"query": symbol.upper()}
+        print(f"📡 TV /technicals/summary -> {query}", flush=True)
+        r = requests.get(TV_URL, headers=TV_HEADERS, params=query, timeout=10)
+        txt = r.text[:400]
+        print("TV raw (prefix):", txt, flush=True)
+        data = r.json()
+        if "data" in data and isinstance(data["data"], dict):
+            d = data["data"]
+            rsi = d.get("RSI")
+            ema50 = d.get("EMA50")
+            ema200 = d.get("EMA200")
+            return {"rsi": rsi, "ema50": ema50, "ema200": ema200}
+    except Exception as e:
+        print("TradingView error:", e, flush=True)
+    return None
+
+# =============== FALLBACK: yfinance ile RSI+EMA ===============
+def fallback_rsi_ema(symbol):
+    try:
+        sym = symbol.upper() + ".IS"
+        df = yf.download(sym, period="12mo", interval="1d", progress=False)
+        if df is None or df.empty or "Close" not in df.columns:
+            return None
+        close = df["Close"].dropna()
+
+        # EMA50 & EMA200
+        ema50 = close.ewm(span=50, adjust=False).mean().iloc[-1]
+        ema200 = close.ewm(span=200, adjust=False).mean().iloc[-1]
+
+        # RSI (14)
+        delta = close.diff()
+        gain = delta.where(delta > 0, 0.0)
+        loss = -delta.where(delta < 0, 0.0)
+        avg_gain = gain.rolling(window=14, min_periods=14).mean().iloc[-1]
+        avg_loss = loss.rolling(window=14, min_periods=14).mean().iloc[-1]
+        avg_gain = float(avg_gain) if np.isfinite(avg_gain) else 0.0
+        avg_loss = float(avg_loss) if (np.isfinite(avg_loss) and avg_loss != 0) else 1e-9
+        rs = avg_gain / avg_loss
+        rsi = 100 - (100 / (1 + rs))
+        return {"rsi": round(float(rsi), 2), "ema50": float(ema50), "ema200": float(ema200)}
+    except Exception as e:
+        print("Fallback RSI/EMA error:", e, flush=True)
+        return None
+
+# =============== MESAJ OLUŞTURMA ===============
+def build_message(symbol):
+    symbol = symbol.strip().upper()
+    info = get_price(symbol)
+
+    # TV → yoksa fallback
+    tech = get_tv_analysis(symbol)
+    if tech is None:
+        tech = fallback_rsi_ema(symbol)
+
+    # Eğer fiyat yoksa tek bir net mesaj dön
     if not info:
         return f"⚠️ {symbol} için veri alınamadı veya desteklenmiyor."
 
     lines = [f"📈 <b>{symbol}</b> Hisse Özeti (BIST)"]
-    lines.append(f"💰 Fiyat: {info['fiyat']} TL")
-    if info.get("degisim"):
+
+    if info.get("fiyat") is not None:
+        lines.append(f"💰 Fiyat: {info['fiyat']} TL")
+    if info.get("degisim") and info["degisim"] != "0.00%":
         lines.append(f"📉 Değişim: {info['degisim']}")
 
-    detaylar = []
-    if info.get("acilis"):
-        detaylar.append(f"Açılış: {info['acilis']}")
-    if info.get("kapanis"):
-        detaylar.append(f"Kapanış: {info['kapanis']}")
-    if detaylar:
-        lines.append("📊 " + " | ".join(detaylar))
-
-    if info.get("tavan") or info.get("taban"):
+    if info.get("acilis") is not None or info.get("kapanis") is not None:
         satir = []
-        if info.get("tavan"):
+        if info.get("acilis") is not None:
+            satir.append(f"Açılış: {info['acilis']}")
+        if info.get("kapanis") is not None:
+            satir.append(f"Kapanış: {info['kapanis']}")
+        if satir:
+            lines.append("📊 " + " | ".join(satir))
+
+    if info.get("tavan") is not None or info.get("taban") is not None:
+        satir = []
+        if info.get("tavan") is not None:
             satir.append(f"🔼 Tavan: {info['tavan']}")
-        if info.get("taban"):
+        if info.get("taban") is not None:
             satir.append(f"🔽 Taban: {info['taban']}")
-        lines.append(" | ".join(satir))
+        if satir:
+            lines.append(" | ".join(satir))
 
     if info.get("hacim"):
         lines.append(f"💸 Hacim: {info['hacim']}")
     if info.get("piyasa"):
         lines.append(f"🏢 Piyasa Değeri: {info['piyasa']}")
-    if info.get("fk") or info.get("pddd"):
-        fk_pd = []
-        if info.get("fk"):
-            fk_pd.append(f"📗 F/K: {info['fk']}")
-        if info.get("pddd"):
-            fk_pd.append(f"📘 PD/DD: {info['pddd']}")
-        if fk_pd:
-            lines.append(" | ".join(fk_pd))
+    # FK & PD/DD aynen bırak
+    fkpddd = []
+    if info.get("fk") is not None:
+        fkpddd.append(f"📗 F/K: {info['fk']}")
+    if info.get("pddd") is not None:
+        fkpddd.append(f"📘 PD/DD: {info['pddd']}")
+    if fkpddd:
+        lines.append(" | ".join(fkpddd))
 
-    lines.append("\n" + analysis)
-    lines.append("\n" + news)
+    # === TEKNİK BLOK (EMA & RSI & ÖNERİ) ===
+    if tech and (tech.get("rsi") is not None or (tech.get("ema50") is not None and tech.get("ema200") is not None)):
+        rsi_val = tech.get("rsi")
+        ema50 = tech.get("ema50")
+        ema200 = tech.get("ema200")
+
+        rsi_label = map_rsi_to_label(rsi_val)
+        ema_sig = map_ema_signal(ema50, ema200)
+        overall = combine_recommendation(ema_sig, rsi_label)
+
+        parts = []
+        if rsi_val is not None:
+            parts.append(f"RSI: {round(float(rsi_val), 2)} ({rsi_label})")
+        else:
+            parts.append(f"RSI: — ({rsi_label})")
+
+        if ema50 is not None and ema200 is not None:
+            parts.append(f"EMA50: {round(float(ema50),2)} | EMA200: {round(float(ema200),2)} → EMA: {ema_sig}")
+        else:
+            parts.append("EMA50/EMA200: — → EMA: NÖTR")
+
+        parts.append(f"Öneri: {overall}")
+        lines.append("\n📊 " + " | ".join(parts))
+    else:
+        lines.append("\n📊 Teknik analiz alınamadı.")
+
+    # Haberler
+    lines.append("\n" + get_news(symbol))
+    # Kaynak
     lines.append(f"\n📎 <a href='{info['url']}'>Kaynak: Yahoo Finance</a>")
 
     return "\n".join(lines)
 
-# === ANA DÖNGÜ ===
+# =============== ANA DÖNGÜ (tek mesaj garantisi) ===============
 def main():
-    print("🚀 Borsa İstanbul Botu (TradingView Entegre) çalışıyor...", flush=True)
+    print("🚀 Borsa İstanbul Botu çalışıyor...", flush=True)
     last_update_id = None
     processed = set()
-
     while True:
         updates = get_updates(last_update_id)
         if not updates:
-            time.sleep(1)
+            time.sleep(0.8)
             continue
 
-        for item in updates.get("result", []):
+        results = updates.get("result", [])
+        results.sort(key=lambda x: x.get("update_id", 0))
+
+        for item in results:
             uid = item.get("update_id")
             if uid in processed:
                 continue
             processed.add(uid)
             last_update_id = uid + 1
 
-            msg = item.get("message", {})
+            msg = item.get("message", {}) or {}
             chat_id = msg.get("chat", {}).get("id")
-            text = (msg.get("text") or "").strip().upper()
-            if not text:
+            text = (msg.get("text") or "").strip()
+            if not chat_id or not text:
                 continue
 
-            print(f"Gelen istek: {text}", flush=True)
-            send_message(chat_id, build_message(text))
-        time.sleep(1)
+            symbol = text.split()[0].lstrip("/").upper()
+            print(f"Gelen istek: {symbol}", flush=True)
 
-# === KEEP ALIVE ===
+            reply = build_message(symbol)
+            send_message(chat_id, reply)
+
+            time.sleep(0.8)  # Telegram rate
+
+        # processed set'i çok büyümesin
+        if len(processed) > 5000:
+            processed = set(list(processed)[-2000:])
+
+        time.sleep(0.5)
+
+# =============== KEEP ALIVE (Flask) ===============
 app = Flask(__name__)
-
 @app.route('/')
 def home():
-    return "✅ Bot aktif!", 200
-
+    return "✅ Bot aktif, Render portu açık!", 200
 def run():
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
-
 Thread(target=run).start()
 
 if __name__ == "__main__":
