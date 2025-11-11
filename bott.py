@@ -245,7 +245,7 @@ def build_message(symbol):
             f"📊 EMA(G): {ema_sig}",
             f"🤖 <b>Kriptos AI:</b> {overall}"
         ]
-        lines.append("\n📊 <b>Teknik Analiz Sonuçları:<b>\n" + "\n".join(parts))
+        lines.append("📊 <b>Teknik Analiz Sonuçları:<b>\n" + "\n".join(parts))
     else:
         lines.append("\n📊 Teknik analiz alınamadı.")
 
