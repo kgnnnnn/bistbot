@@ -64,6 +64,44 @@ def get_news(symbol):
         print("News error:", e, flush=True)
         return "📰 Haberler alınamadı."
 
+# =============== HABER ANALİZİ (OpenAI - Kriptos AI) ===============
+def analyze_news_with_ai(news_text):
+    """Son 3 haber başlığını özetleyip, kısa bir piyasa hissiyatı yorumu döndürür."""
+    try:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            return "⚠️ AI yorum yapılamadı (API anahtarı eksik)."
+
+        prompt = (
+            "Aşağıda Borsa İstanbul'da işlem gören bir hisseye dair son haber başlıkları var.\n"
+            "Haberleri 1-2 cümlede özetle ve genel hissiyatı (pozitif/negatif/nötr) belirt.\n"
+            "Yatırım tavsiyesi verme; Türkçe, sade ve profesyonel yaz.\n\n"
+            f"{news_text}\n\n"
+            "Yanıt formatı:\n🧠 Kriptos AI Yorum: <yorum>"
+        )
+
+        resp = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "gpt-4o-mini",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 120,
+                "temperature": 0.6,
+            },
+            timeout=12,
+        )
+        data = resp.json()
+        choice = (data.get("choices") or [{}])[0]
+        msg = (choice.get("message") or {}).get("content")
+        return msg.strip() if msg else "⚠️ AI yorum alınamadı."
+    except Exception as e:
+        print("AI yorum hatası:", e, flush=True)
+        return "⚠️ AI yorum alınamadı."
+
 # =============== YAHOO FİYAT & F/K, PD/DD (tek deneme) ===============
 def get_price(symbol):
     """YF rate-limit olursa sessizce None döner; mesaj yine tek parça gönderilir."""
@@ -264,8 +302,13 @@ def build_message(symbol):
         if fin.get('kar_marji'):
             lines.append(f"📈 Kâr Marjı: %{round(fin['kar_marji'],1)}")
 
-    # --- Haberler ---
-    lines.append("\n\n" + get_news(symbol))
+    # --- Haberler (tek çekim) ---
+    news_text = get_news(symbol)
+    lines.append("\n\n" + news_text)
+
+    # --- AI Haber Yorumu ---
+    ai_comment = analyze_news_with_ai(news_text)
+    lines.append("\n" + ai_comment)
 
     # --- Kaynak ---
     if info and info.get("url"):
@@ -275,7 +318,6 @@ def build_message(symbol):
     lines.append("\n\n💬 Görüş & Öneri: @kriptosbtc")
 
     return "\n".join(lines)
-
 
 # =============== ANA DÖNGÜ (tek mesaj garantisi) ===============
 def main():
