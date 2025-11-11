@@ -81,18 +81,22 @@ def get_investing_analysis(symbol):
 
     try:
         r = requests.get(url, headers=headers, params=query, timeout=10)
-        data = r.json()
-        print("Investing API yanıtı:", data)
+        print("Investing raw response:", r.text)  # 👈 ham metni göster
+        try:
+            data = r.json()
+        except Exception:
+            return "📊 Teknik analiz alınamadı (JSON parse hatası)."
 
-        # Bazı durumlarda teknik özet farklı alanda olur
+        # API yapısına göre esnek kontrol
+        if "data" in data and isinstance(data["data"], dict):
+            inner = data["data"]
+            if "technical_summary" in inner:
+                return f"📊 Investing Analizi: {inner['technical_summary']}"
+            elif "summary" in inner:
+                return f"📊 Investing Analizi: {inner['summary']}"
         if "summary" in data:
-            summary = data["summary"]
-            return f"📊 Investing Analizi: {summary}"
-        elif "technical_summary" in data.get("data", {}):
-            summary = data["data"]["technical_summary"]
-            return f"📊 Investing Analizi: {summary}"
-        else:
-            return "📊 Teknik analiz bulunamadı (Investing)."
+            return f"📊 Investing Analizi: {data['summary']}"
+        return f"📊 Teknik analiz bulunamadı. ({list(data.keys())})"
     except Exception as e:
         print("Investing API error:", e)
         return "📊 Teknik analiz alınamadı (Investing)."
