@@ -228,7 +228,7 @@ def build_message(symbol):
         parts = [
             f"RSI(G): {round(float(rsi_val),2) if rsi_val else '—'} ({rsi_label})",
             f"EMA(G): {ema_sig}",
-            f"Öneri: {overall}"
+            f"Tahmin(AI): {overall}"
         ]
         lines.append("\n📊 " + " | ".join(parts))
     else:
