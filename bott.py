@@ -9,12 +9,10 @@ import yfinance as yf
 BOT_TOKEN = "8116276773:AAHoSQAthKmijTE62bkqtGQNACf0zi0JuCs"
 URL = f"https://api.telegram.org/bot{BOT_TOKEN}/"
 
-
 # === TELEGRAM ===
 def get_updates(offset=None):
     params = {"timeout": 100, "offset": offset}
     return requests.get(URL + "getUpdates", params=params).json()
-
 
 def send_message(chat_id, text):
     requests.post(
@@ -26,7 +24,6 @@ def send_message(chat_id, text):
             "disable_web_page_preview": True,
         },
     )
-
 
 # === SAYI BİÇİMLENDİRME ===
 def format_number(num):
@@ -42,7 +39,6 @@ def format_number(num):
         return f"{int(num):,}".replace(",", ".")
     except Exception:
         return None
-
 
 # === YAHOO FİNANCE VERİSİ ===
 def get_price(symbol):
@@ -84,6 +80,44 @@ def get_price(symbol):
         print("Price error:", e)
         return None
 
+# === TRADINGVIEW TEKNİK ANALİZ (RSI, MACD, ÖNERİ) ===
+from tradingview_ta import TA_Handler, Interval
+
+def get_tradingview_analysis(symbol: str) -> str:
+    """
+    TradingView'den anlık teknik analiz: RSI, MACD yönü ve genel öneri.
+    Hata olsa bile kullanıcıya düzgün bir satır döner (mesaj kırılmaz).
+    """
+    try:
+        sym = symbol.upper()
+        handler = TA_Handler(
+            symbol=f"{sym}.IS",     # örn: ASELS.IS
+            screener="turkey",      # BIST için doğru screener
+            exchange="BIST",        # Borsa İstanbul
+            interval=Interval.INTERVAL_5_MINUTES  # daha "anlık" analiz
+        )
+        analysis = handler.get_analysis()
+        summary = analysis.summary  # {"RECOMMENDATION": "BUY" | "SELL" | "NEUTRAL" | "STRONG_BUY"...}
+
+        # bazı göstergeler dictionary'de olmayabilir; güvenle al
+        indicators = analysis.indicators or {}
+        rsi = indicators.get("RSI")
+        macd = indicators.get("MACD.macd")
+        macd_signal = indicators.get("MACD.signal")
+
+        # RSI metni
+        rsi_txt = f"{round(rsi,2)}" if isinstance(rsi, (int, float)) else "—"
+        # MACD yönü
+        if isinstance(macd, (int, float)) and isinstance(macd_signal, (int, float)):
+            macd_dir = "Al" if macd > macd_signal else "Sat"
+        else:
+            macd_dir = "—"
+
+        rec = summary.get("RECOMMENDATION", "—")
+        return f"📊 RSI: {rsi_txt} | MACD: {macd_dir} | Öneri: {rec}"
+    except Exception as e:
+        print("TradingView error:", e)
+        return "📊 Teknik analiz alınamadı."
 
 # === HABERLER (OPSİYONEL: Google News RSS) ===
 def get_news(symbol):
@@ -110,7 +144,6 @@ def get_news(symbol):
     except Exception as e:
         print("News error:", e)
         return "📰 Haberler alınamadı."
-
 
 # === MESAJ OLUŞTUR ===
 def build_message(symbol):
@@ -146,7 +179,6 @@ def build_message(symbol):
 
     if info.get("hacim"):
         lines.append(f"💸 Hacim: {info['hacim']}")
-
     if info.get("piyasa"):
         lines.append(f"🏢 Piyasa Değeri: {info['piyasa']}")
 
@@ -159,11 +191,17 @@ def build_message(symbol):
         if detay:
             lines.append(" | ".join(detay))
 
+    # === TRADINGVIEW TEKNİK ANALİZİ ===
+    tech = get_tradingview_analysis(symbol)
+    lines.append("\n" + tech)
+
+    # === HABERLER ===
     lines.append("\n" + news)
+
+    # === KAYNAK ===
     lines.append(f"\n📎 <a href='{info['url']}'>Kaynak: Yahoo Finance</a>")
 
     return "\n".join(lines)
-
 
 # === ANA DÖNGÜ ===
 def main():
@@ -206,3 +244,4 @@ Thread(target=run).start()
 
 if __name__ == "__main__":
     main()
+
