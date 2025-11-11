@@ -82,9 +82,7 @@ def get_price(symbol):
 
 # === BASİT RSI (yfinance fallback) ===
 def get_rsi_fallback(symbol: str, period: int = 14, lookback_months: int = 3):
-    """
-    yfinance kullanarak RSI hesaplar. Her zaman bir sonuç döndürür veya hata mesajı verir.
-    """
+    """yfinance kullanarak RSI hesaplar — her zaman sonuç döner."""
     sym = symbol.upper() + ".IS"
     try:
         df = yf.download(sym, period=f"{lookback_months}mo", interval="1d", progress=False)
@@ -95,24 +93,31 @@ def get_rsi_fallback(symbol: str, period: int = 14, lookback_months: int = 3):
         if len(close) < period + 1:
             return "📊 RSI: veri yetersiz."
 
-        delta = close.diff().dropna()
-        gain = delta.where(delta > 0, 0.0)
-        loss = -delta.where(delta < 0, 0.0)
+        delta = close.diff()
+        gain = delta.clip(lower=0)
+        loss = -delta.clip(upper=0)
+
+        # Ortalama kazanç/kayıp
         avg_gain = gain.rolling(window=period, min_periods=period).mean()
         avg_loss = loss.rolling(window=period, min_periods=period).mean()
-        # prevent zero division
-        last_avg_gain = avg_gain.iloc[-1] if avg_gain.iloc[-1] is not np.nan else 0.0
-        last_avg_loss = avg_loss.iloc[-1] if avg_loss.iloc[-1] is not np.nan else 1e-9
-        rs = last_avg_gain / (last_avg_loss if last_avg_loss != 0 else 1e-9)
+
+        # Son değerleri güvenli çek
+        last_gain = float(avg_gain.iloc[-1]) if not np.isnan(avg_gain.iloc[-1]) else 0.0
+        last_loss = float(avg_loss.iloc[-1]) if not np.isnan(avg_loss.iloc[-1]) else 1e-9
+
+        rs = last_gain / (last_loss if last_loss != 0 else 1e-9)
         rsi = 100 - (100 / (1 + rs))
-        last_rsi = round(float(rsi), 2)
-        if last_rsi >= 70:
+        rsi = round(rsi, 2)
+
+        # Yorum
+        if rsi >= 70:
             rec = "Sat"
-        elif last_rsi <= 30:
+        elif rsi <= 30:
             rec = "Al"
         else:
             rec = "Nötr"
-        return f"📊 RSI: {last_rsi} ({rec})"
+
+        return f"📊 RSI: {rsi} ({rec})"
     except Exception as e:
         print("RSI fallback error:", e, flush=True)
         return "📊 RSI: hesaplanamadı."
