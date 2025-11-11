@@ -249,6 +249,7 @@ def main():
                     "⚙️ Veriler: TradingView & Yahoo Finance'den sağlanmaktadır.\n\n"
                     "❗️UYARI: Algoritmalar yanılabilir! Bilgiler kesinlikle YATIRIM TAVSİYESİ kapsamında değildir!\n\n"
                     "📊 Komut örneği: <b>ASELS/asels</b>"
+                    "Algoritmamızla ilgili sorun veya önerileriniz için @kriptosbtc ile iletişime geçebilirsiniz."
                 )
                 send_message(chat_id, msg)
                 continue
