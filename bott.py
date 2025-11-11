@@ -76,15 +76,18 @@ def analyze_news_with_ai(news_text):
         if not api_key:
             return "⚠️ AI yorum yapılamadı (API anahtarı eksik)."
 
+        # Eğer haber metni Google RSS default mesajlarından biri ise (örneğin 'Haberler alınamadı')
+        if "Haberler alınamadı" in news_text or "Lütfen Hisse Kodunu Doğru Giriniz" in news_text:
+            return "⚠️ Yorum yapılacak geçerli haber bulunamadı."
+
         prompt = (
-            "Aşağıda Borsa İstanbul'da işlem gören bir hisseye dair son haber başlıkları var.\n"
-            "Haberleri 1-2 cümlede özetle ve genel hissiyatı (pozitif/negatif/nötr) belirt.\n"
-            "Yatırım tavsiyesi verme; Türkçe, sade ve profesyonel yaz.\n\n"
-            f"{news_text}\n\n"
-            "Yanıt formatı:\n🧠 Kriptos AI Yorum: <yorum>"
+            "Aşağıda Borsa İstanbul'da işlem gören bir hisseye ait son haber başlıkları bulunuyor.\n"
+            "Bu başlıkları analiz et; 1-2 cümlelik kısa bir Türkçe özet oluştur ve genel piyasa hissiyatını belirt (pozitif / negatif / nötr).\n"
+            "Yatırım tavsiyesi verme. Sonuçta '🧠 Kriptos AI Yorum:' etiketiyle başla.\n\n"
+            f"{news_text}"
         )
 
-        resp = requests.post(
+        response = requests.post(
             "https://api.openai.com/v1/chat/completions",
             headers={
                 "Authorization": f"Bearer {api_key}",
@@ -96,12 +99,17 @@ def analyze_news_with_ai(news_text):
                 "max_tokens": 120,
                 "temperature": 0.6,
             },
-            timeout=12,
+            timeout=15,
         )
-        data = resp.json()
-        choice = (data.get("choices") or [{}])[0]
-        msg = (choice.get("message") or {}).get("content")
+
+        if response.status_code != 200:
+            print("AI HTTP Hata:", response.text, flush=True)
+            return "⚠️ AI yorum alınamadı."
+
+        data = response.json()
+        msg = data.get("choices", [{}])[0].get("message", {}).get("content")
         return msg.strip() if msg else "⚠️ AI yorum alınamadı."
+
     except Exception as e:
         print("AI yorum hatası:", e, flush=True)
         return "⚠️ AI yorum alınamadı."
