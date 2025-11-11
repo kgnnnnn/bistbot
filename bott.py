@@ -219,20 +219,23 @@ def build_message(symbol):
         if fkpddd: lines.append(" | ".join(fkpddd))
 
     if tech and (tech.get("rsi") is not None or (tech.get("ema50") and tech.get("ema200"))):
-        rsi_val = tech.get("rsi")
-        ema50 = tech.get("ema50")
-        ema200 = tech.get("ema200")
-        rsi_label = map_rsi_label(rsi_val)
-        ema_sig = map_ema_signal(ema50, ema200)
-        overall = combine_recommendation(ema_sig, rsi_label)
-        parts = [
-            f"RSI(G): {round(float(rsi_val),2) if rsi_val else '—'} ({rsi_label})",
-            f"EMA(G): {ema_sig}",
-            f"Tahmin(Kriptos AI): {overall}"
-        ]
-        lines.append("\n📊 " + "\n".join(parts))
-    else:
-        lines.append("\n📊 Teknik analiz alınamadı.")
+    rsi_val = tech.get("rsi")
+    ema50 = tech.get("ema50")
+    ema200 = tech.get("ema200")
+
+    rsi_label = map_rsi_label(rsi_val)
+    ema_sig = map_ema_signal(ema50, ema200)
+    overall = combine_recommendation(ema_sig, rsi_label)
+
+    parts = [
+        f"📈 RSI(G): {round(float(rsi_val),2) if rsi_val else '—'} ({rsi_label})",
+        f"📊 EMA(G): {ema_sig}",
+        f"🤖 <b>Kriptos AI:</b> {overall}"
+    ]
+
+    lines.append("\n📊 Teknik Analiz Sonuçları:\n" + "\n".join(parts))
+else:
+    lines.append("\n📊 Teknik analiz alınamadı.")
 
     # --- Temel Finansal Veriler (Bilanço Özeti) ---
     fin = get_balance_summary(symbol)
