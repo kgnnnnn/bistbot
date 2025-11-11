@@ -69,7 +69,7 @@ def get_news(symbol):
 def get_price(symbol):
     """YF rate-limit olursa sessizce None döner; mesaj yine tek parça gönderilir."""
     try:
-        time.sleep(random.uniform(0.2, 0.5))
+        time.sleep(random.uniform(0.3, 0.6))
         ticker = yf.Ticker(symbol.upper() + ".IS")
         info = ticker.info
         if not info or "currentPrice" not in info or info["currentPrice"] is None:
