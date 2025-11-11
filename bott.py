@@ -83,7 +83,10 @@ def get_price(symbol):
 # === BASİT RSI (yfinance fallback) ===
 def get_rsi_fallback(symbol: str, period: int = 14, lookback_months: int = 3):
     """yfinance kullanarak RSI hesaplar — her zaman sonuç döner."""
+    import numpy as np
+    import pandas as pd
     sym = symbol.upper() + ".IS"
+
     try:
         df = yf.download(sym, period=f"{lookback_months}mo", interval="1d", progress=False)
         if df is None or df.empty or "Close" not in df.columns:
@@ -94,20 +97,29 @@ def get_rsi_fallback(symbol: str, period: int = 14, lookback_months: int = 3):
             return "📊 RSI: veri yetersiz."
 
         delta = close.diff()
-        gain = delta.clip(lower=0)
-        loss = -delta.clip(upper=0)
+        gain = delta.where(delta > 0, 0.0)
+        loss = -delta.where(delta < 0, 0.0)
 
-        # Ortalama kazanç/kayıp
         avg_gain = gain.rolling(window=period, min_periods=period).mean()
         avg_loss = loss.rolling(window=period, min_periods=period).mean()
 
         # Son değerleri güvenli çek
-        last_gain = float(avg_gain.iloc[-1]) if not np.isnan(avg_gain.iloc[-1]) else 0.0
-        last_loss = float(avg_loss.iloc[-1]) if not np.isnan(avg_loss.iloc[-1]) else 1e-9
+        last_gain = avg_gain.iloc[-1]
+        last_loss = avg_loss.iloc[-1]
+
+        # Eğer bunlar bir Series veya NaN ise güvenli şekilde sıfırla
+        try:
+            last_gain = float(last_gain) if np.isfinite(last_gain) else 0.0
+        except:
+            last_gain = 0.0
+        try:
+            last_loss = float(last_loss) if np.isfinite(last_loss) and last_loss != 0 else 1e-9
+        except:
+            last_loss = 1e-9
 
         rs = last_gain / (last_loss if last_loss != 0 else 1e-9)
         rsi = 100 - (100 / (1 + rs))
-        rsi = round(rsi, 2)
+        rsi = round(float(rsi), 2)
 
         # Yorum
         if rsi >= 70:
@@ -118,9 +130,11 @@ def get_rsi_fallback(symbol: str, period: int = 14, lookback_months: int = 3):
             rec = "Nötr"
 
         return f"📊 RSI: {rsi} ({rec})"
+
     except Exception as e:
         print("RSI fallback error:", e, flush=True)
         return "📊 RSI: hesaplanamadı."
+
 
 # === TRADINGVIEW (RapidAPI) + fallback to RSI ===
 def get_tradingview_analysis(symbol):
