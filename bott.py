@@ -173,22 +173,27 @@ def combine_recommendation(ema_sig, rsi_label):
     return "NÖTR"
 
 def get_tv_analysis(symbol):
-    """TradingView'den RSI, EMA50, EMA200 çeker; yoksa None döner (fallback yok)."""
     try:
         query = {"query": symbol.upper()}
         print(f"📡 TV /technicals/summary {query}", flush=True)
         r = requests.get(TV_URL, headers=TV_HEADERS, params=query, timeout=8)
         data = r.json()
         d = data.get("data") if isinstance(data, dict) else None
-        if isinstance(d, dict):
-            return {
-                "rsi": d.get("RSI"),
-                "ema50": d.get("EMA50"),
-                "ema200": d.get("EMA200"),
-            }
-    except Exception:
-        pass
-    return None
+
+        if not d:
+            print(f"⚠️ TradingView veri boş döndü: {data}", flush=True)
+            return None
+
+        return {
+            "rsi": d.get("RSI"),
+            "ema50": d.get("EMA50"),
+            "ema200": d.get("EMA200"),
+        }
+
+    except Exception as e:
+        print(f"⚠️ TradingView hata: {e}", flush=True)
+        return None
+
 
 # =============== YFINANCE BİLANÇO ÖZETİ (Temel Finansallar) ===============
 def get_balance_summary(symbol):
