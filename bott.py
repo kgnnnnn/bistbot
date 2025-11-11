@@ -245,7 +245,7 @@ def build_message(symbol):
             f"🔄 EMA(G): {ema_sig}",
             f"🤖 <b>Kriptos AI:</b> {overall}"
         ]
-        lines.append("📊 <b>Teknik Analiz Sonuçları:<b>\n" + "\n".join(parts))
+        lines.append("📊 <b>Teknik Analiz Sonuçları:</b>\n" + "\n".join(parts))
     else:
         lines.append("\n📊 Teknik analiz alınamadı.")
 
@@ -274,25 +274,6 @@ def build_message(symbol):
 
     # --- Görüş / İletişim ---
     lines.append("\n💬 Görüş & Öneri: @kriptosbtc")
-
-    return "\n".join(lines)
-
-
-    # --- Temel Finansal Veriler (Bilanço Özeti) ---
-    fin = get_balance_summary(symbol)
-    if fin:
-        lines.append("\n🏦 <b>Bilanço Özeti</b>")
-        lines.append(f"📅 Dönem: {fin['period']}")
-        if fin.get('net_kar'): lines.append(f"💰 Net Kâr: {round(fin['net_kar']/1e9,2)} milyar TL")
-        if fin.get('ciro'): lines.append(f"💵 Ciro: {round(fin['ciro']/1e9,2)} milyar TL")
-        if fin.get('ozsermaye'): lines.append(f"🏢 Özsermaye: {round(fin['ozsermaye']/1e9,2)} milyar TL")
-        if fin.get('borc_orani'): lines.append(f"📊 Borç/Özsermaye: %{round(fin['borc_orani'],1)}")
-        if fin.get('kar_marji'): lines.append(f"📈 Kâr Marjı: %{round(fin['kar_marji'],1)}")
-
-    lines.append("\n" + get_news(symbol))
-
-    if info and info.get("url"):
-        lines.append(f"\n📎 <a href='{info['url']}'>Kaynak: Yahoo Finance</a>")
 
     return "\n".join(lines)
 
