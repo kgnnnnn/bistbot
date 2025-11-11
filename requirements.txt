@@ -4,4 +4,4 @@ datetime
 pandas
 numpy
 flask
-
+tradingview_ta
