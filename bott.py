@@ -2,6 +2,9 @@ import time, random, os, requests, yfinance as yf
 from flask import Flask
 from threading import Thread
 
+openai.api_key = os.getenv("OPENAI_API_KEY")
+print("DEBUG OPENAI KEY:", openai.api_key[:10] if openai.api_key else "YOK", flush=True)
+
 BOT_TOKEN = "8116276773:AAHoSQAthKmijTE62bkqtGQNACf0zi0JuCs"
 URL = f"https://api.telegram.org/bot{BOT_TOKEN}/"
 
