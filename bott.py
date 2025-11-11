@@ -1,4 +1,3 @@
-# bistbot.py
 import time, random, os, requests, yfinance as yf
 from flask import Flask
 from threading import Thread
@@ -88,7 +87,6 @@ def get_price(symbol):
             "piyasa": format_number(info.get("marketCap")),
         }
     except Exception:
-        # spam log istemiyorsun; sessiz geçiyoruz
         return None
 
 # =============== TRADINGVIEW REAL-TIME (RSI, EMA50/EMA200) ===============
@@ -128,7 +126,6 @@ def get_tv_analysis(symbol):
     """TradingView'den RSI, EMA50, EMA200 çeker; yoksa None döner (fallback yok)."""
     try:
         query = {"query": symbol.upper()}
-        # Gerekli ama kısa log; flood yok
         print(f"📡 TV /technicals/summary {query}", flush=True)
         r = requests.get(TV_URL, headers=TV_HEADERS, params=query, timeout=8)
         data = r.json()
@@ -143,68 +140,94 @@ def get_tv_analysis(symbol):
         pass
     return None
 
+# =============== YFINANCE BİLANÇO ÖZETİ (Temel Finansallar) ===============
+def get_balance_summary(symbol):
+    """Yahoo Finance üzerinden son çeyrek finansal özet (Net Kâr, Ciro, Özsermaye, Borç, Kâr Marjı)."""
+    try:
+        ticker = yf.Ticker(symbol.upper() + ".IS")
+        fin = ticker.quarterly_financials
+        bs = ticker.quarterly_balance_sheet
+
+        if fin.empty or bs.empty:
+            return None
+
+        last_col = fin.columns[0]
+        net_kar = fin.loc["Net Income"][last_col] if "Net Income" in fin.index else None
+        ciro = fin.loc["Total Revenue"][last_col] if "Total Revenue" in fin.index else None
+        ozsermaye = bs.loc["Total Stockholder Equity"][last_col] if "Total Stockholder Equity" in bs.index else None
+        borc = bs.loc["Total Liab"][last_col] if "Total Liab" in bs.index else None
+
+        borc_orani = (borc / ozsermaye * 100) if borc and ozsermaye else None
+        kar_marji = (net_kar / ciro * 100) if net_kar and ciro else None
+
+        return {
+            "period": str(last_col),
+            "net_kar": net_kar,
+            "ciro": ciro,
+            "ozsermaye": ozsermaye,
+            "borc_orani": borc_orani,
+            "kar_marji": kar_marji,
+        }
+    except Exception as e:
+        print("Finansal veri hatası:", e)
+        return None
+
 # =============== MESAJ OLUŞTURMA ===============
 def build_message(symbol):
     symbol = symbol.strip().upper()
-
-    # 1) Fiyat/fundamentals (varsa ekleyeceğiz; yoksa atlayacağız)
     info = get_price(symbol)
-
-    # 2) Teknik (TradingView)
     tech = get_tv_analysis(symbol)
-
     lines = [f"📈 <b>{symbol}</b> Hisse Özeti (BIST)"]
 
-    # --- Fiyat & temel ---
     if info:
         if info.get("fiyat") is not None:
             lines.append(f"💰 Fiyat: {info['fiyat']} TL")
         if info.get("degisim") and info["degisim"] != "0.00%":
             lines.append(f"📉 Değişim: {info['degisim']}")
         satir = []
-        if info.get("acilis") is not None:  satir.append(f"Açılış: {info['acilis']}")
+        if info.get("acilis") is not None: satir.append(f"Açılış: {info['acilis']}")
         if info.get("kapanis") is not None: satir.append(f"Kapanış: {info['kapanis']}")
         if satir: lines.append("📊 " + " | ".join(satir))
         satir = []
         if info.get("tavan") is not None: satir.append(f"🔼 Tavan: {info['tavan']}")
         if info.get("taban") is not None: satir.append(f"🔽 Taban: {info['taban']}")
         if satir: lines.append(" | ".join(satir))
-        if info.get("hacim"):  lines.append(f"💸 Hacim: {info['hacim']}")
+        if info.get("hacim"): lines.append(f"💸 Hacim: {info['hacim']}")
         if info.get("piyasa"): lines.append(f"🏢 Piyasa Değeri: {info['piyasa']}")
         fkpddd = []
-        if info.get("fk")   is not None: fkpddd.append(f"📗 F/K: {info['fk']}")
+        if info.get("fk") is not None: fkpddd.append(f"📗 F/K: {info['fk']}")
         if info.get("pddd") is not None: fkpddd.append(f"📘 PD/DD: {info['pddd']}")
         if fkpddd: lines.append(" | ".join(fkpddd))
 
-    # --- Teknik (RSI/EMA → ÖNERİ) ---
-        # --- Teknik (RSI/EMA → ÖNERİ) ---
-    if tech and (tech.get("rsi") is not None or (tech.get("ema50") is not None and tech.get("ema200") is not None)):
+    if tech and (tech.get("rsi") is not None or (tech.get("ema50") and tech.get("ema200"))):
         rsi_val = tech.get("rsi")
-        ema50   = tech.get("ema50")
-        ema200  = tech.get("ema200")
-
+        ema50 = tech.get("ema50")
+        ema200 = tech.get("ema200")
         rsi_label = map_rsi_label(rsi_val)
-        ema_sig   = map_ema_signal(ema50, ema200)
-        overall   = combine_recommendation(ema_sig, rsi_label)
-
-        parts = []
-        # RSI(G) → Günlük RSI değeri
-        parts.append(f"RSI(G): {round(float(rsi_val),2) if rsi_val is not None else '—'} ({rsi_label})")
-
-        # EMA(G) → Günlük EMA kesişimi (değerleri yazmadan sadece sinyal)
-        parts.append(f"EMA(G): {ema_sig}")
-
-        # Öneri kısmı aynı kalıyor
-        parts.append(f"Öneri: {overall}")
-
+        ema_sig = map_ema_signal(ema50, ema200)
+        overall = combine_recommendation(ema_sig, rsi_label)
+        parts = [
+            f"RSI(G): {round(float(rsi_val),2) if rsi_val else '—'} ({rsi_label})",
+            f"EMA(G): {ema_sig}",
+            f"Öneri: {overall}"
+        ]
         lines.append("\n📊 " + " | ".join(parts))
     else:
         lines.append("\n📊 Teknik analiz alınamadı.")
 
-    # --- Haberler ---
+    # --- Temel Finansal Veriler (Bilanço Özeti) ---
+    fin = get_balance_summary(symbol)
+    if fin:
+        lines.append("\n🏦 <b>Bilanço Özeti</b>")
+        lines.append(f"📅 Dönem: {fin['period']}")
+        if fin.get('net_kar'): lines.append(f"💰 Net Kâr: {round(fin['net_kar']/1e9,2)} milyar TL")
+        if fin.get('ciro'): lines.append(f"💵 Ciro: {round(fin['ciro']/1e9,2)} milyar TL")
+        if fin.get('ozsermaye'): lines.append(f"🏢 Özsermaye: {round(fin['ozsermaye']/1e9,2)} milyar TL")
+        if fin.get('borc_orani'): lines.append(f"📊 Borç/Özsermaye: %{round(fin['borc_orani'],1)}")
+        if fin.get('kar_marji'): lines.append(f"📈 Kâr Marjı: %{round(fin['kar_marji'],1)}")
+
     lines.append("\n" + get_news(symbol))
 
-    # --- Kaynak (varsa) ---
     if info and info.get("url"):
         lines.append(f"\n📎 <a href='{info['url']}'>Kaynak: Yahoo Finance</a>")
 
@@ -215,31 +238,25 @@ def main():
     print("🚀 Borsa İstanbul Botu çalışıyor...", flush=True)
     last_update_id = None
     processed = set()
-
     while True:
         updates = get_updates(last_update_id)
         if not updates:
             time.sleep(0.8)
             continue
-
         results = updates.get("result", [])
         results.sort(key=lambda x: x.get("update_id", 0))
-
         for item in results:
             uid = item.get("update_id")
             if uid in processed:
                 continue
             processed.add(uid)
             last_update_id = uid + 1
-
             message = item.get("message", {}) or {}
             chat = message.get("chat", {}) or {}
             chat_id = chat.get("id")
             text = (message.get("text") or "").strip()
             if not chat_id or not text:
                 continue
-
-            # 🟢 /start komutu için karşılama mesajı
             if text.lower() == "/start":
                 msg = (
                     "👋 <b>Kriptos BIST100 Takip Botu'na Hoş Geldin!</b>\n\n"
@@ -247,38 +264,28 @@ def main():
                     "Algoritmamız fiyat, güncel haberler, hacim vb. bilgileri iletir.\n\n"
                     "Yapay zeka destekli algoritmamız RSI ve EMA indikatör analizleri yapar ve (al-sat-vb.) önermeler üretir.\n\n"
                     "⚙️ Veriler: TradingView & Yahoo Finance'den sağlanmaktadır.\n\n"
-                    "❗️UYARI: Algoritmalar yanılabilir! Bilgiler kesinlikle YATIRIM TAVSİYESİ kapsamında değildir!\n\n"
+                    "❗️UYARI: Bilgiler kesinlikle YATIRIM TAVSİYESİ kapsamında değildir!\n\n"
                     "📊 Komut örneği: <b>ASELS/asels</b>\n\n"
-                    "Algoritmamızla ilgili sorun veya önerileriniz için @kriptosbtc ile iletişime geçebilirsiniz."
+                    "Sorun veya öneriler için @kriptosbtc ile iletişime geçebilirsiniz."
                 )
                 send_message(chat_id, msg)
                 continue
-
             symbol = text.split()[0].lstrip("/").upper()
             print(f"Gelen istek: {symbol}", flush=True)
-
             reply = build_message(symbol)
             send_message(chat_id, reply)
-            time.sleep(0.8)  # Telegram rate
-
+            time.sleep(0.8)
         if len(processed) > 4000:
             processed = set(list(processed)[-1500:])
-
         time.sleep(0.5)
 
-# =============== KEEP ALIVE (Flask) ===============
 app = Flask(__name__)
-
 @app.route('/')
 def home():
     return "✅ Bot aktif, Render portu açık!", 200
-
 def run():
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
-
 Thread(target=run).start()
-
 if __name__ == "__main__":
     main()
-
