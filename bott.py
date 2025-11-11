@@ -1,6 +1,7 @@
 import time, random, os, requests, yfinance as yf
 from flask import Flask
 from threading import Thread
+import openai
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 print("DEBUG OPENAI KEY:", openai.api_key[:10] if openai.api_key else "YOK", flush=True)
