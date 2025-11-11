@@ -248,7 +248,7 @@ def main():
                     "Yapay zeka destekli algoritmamız RSI ve EMA indikatör analizleri yapar ve (al-sat-vb.) önermeler üretir.\n\n"
                     "⚙️ Veriler: TradingView & Yahoo Finance'den sağlanmaktadır.\n\n"
                     "❗️UYARI: Algoritmalar yanılabilir! Bilgiler kesinlikle YATIRIM TAVSİYESİ kapsamında değildir!\n\n"
-                    "📊 Komut örneği: <b>ASELS/asels</b>"
+                    "📊 Komut örneği: <b>ASELS/asels</b>\n\n"
                     "Algoritmamızla ilgili sorun veya önerileriniz için @kriptosbtc ile iletişime geçebilirsiniz."
                 )
                 send_message(chat_id, msg)
