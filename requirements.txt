@@ -1,7 +1,4 @@
 requests
 yfinance
 datetime
-pandas
-numpy
 flask
-tradingview_ta
