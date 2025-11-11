@@ -48,25 +48,29 @@ def get_price(symbol):
     try:
         time.sleep(random.uniform(1.0, 2.0))
         ticker = yf.Ticker(symbol.upper() + ".IS")
-        info = ticker.info
-
-        if not info or "currentPrice" not in info:
+        data = ticker.history(period="1d")
+        if data.empty:
             return None
+
+        fiyat = data["Close"].iloc[-1]
+        acilis = data["Open"].iloc[-1]
+        tavan = data["High"].iloc[-1]
+        taban = data["Low"].iloc[-1]
+        hacim = data["Volume"].iloc[-1]
 
         return {
             "url": f"https://finance.yahoo.com/quote/{symbol}.IS",
-            "fiyat": info.get("currentPrice"),
-            "degisim": f"{info.get('regularMarketChangePercent', 0):.2f}%",
-            "acilis": info.get("open"),
-            "kapanis": info.get("previousClose"),
-            "tavan": info.get("dayHigh"),
-            "taban": info.get("dayLow"),
-            "hacim": format_number(info.get("volume")),
-            "fk": info.get("trailingPE"),
-            "pddd": info.get("priceToBook"),
-            "piyasa": format_number(info.get("marketCap")),
+            "fiyat": round(fiyat, 2),
+            "degisim": None,
+            "acilis": round(acilis, 2),
+            "kapanis": round(fiyat, 2),
+            "tavan": round(tavan, 2),
+            "taban": round(taban, 2),
+            "hacim": format_number(hacim),
+            "fk": None,
+            "pddd": None,
+            "piyasa": None,
         }
-
     except Exception as e:
         print("Price error:", e)
         return None
