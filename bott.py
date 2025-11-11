@@ -94,7 +94,7 @@ def get_tradingview_analysis(symbol: str) -> str:
             symbol=f"{sym}.IS",     # örn: ASELS.IS
             screener="turkey",      # BIST için doğru screener
             exchange="BIST",        # Borsa İstanbul
-            interval=Interval.INTERVAL_5_MINUTES  # daha "anlık" analiz
+            interval=Interval.INTERVAL_1_HOUR  # daha "anlık" analiz
         )
         analysis = handler.get_analysis()
         summary = analysis.summary  # {"RECOMMENDATION": "BUY" | "SELL" | "NEUTRAL" | "STRONG_BUY"...}
