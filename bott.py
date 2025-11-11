@@ -230,7 +230,7 @@ def build_message(symbol):
             f"EMA(G): {ema_sig}",
             f"Tahmin(AI): {overall}"
         ]
-        lines.append("\n📊 " + " | ".join(parts))
+        lines.append("\n📊 " + "\n".join(parts))
     else:
         lines.append("\n📊 Teknik analiz alınamadı.")
 
