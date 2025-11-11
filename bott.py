@@ -77,43 +77,42 @@ def get_price(symbol):
 
 # === TEKNİK ANALİZ ===
 def get_technical_analysis(symbol):
-    """RSI, MACD ve Hareketli Ortalamaları hesaplar"""
-    symbol = symbol.upper()
+    """Anlık RSI, MACD ve Hareketli Ortalama (5 dakikalık veriden)."""
     try:
-        data = yf.download(symbol + ".IS", period="6mo", interval="1d", progress=False)
-        print(f"{symbol}: {len(data)} satır veri çekildi.")
-        if data.empty or len(data) < 50:
-            return "📊 Teknik analiz verisi alınamadı."
+        # 5 dakikalık veriler, 1 günlük aralıkta
+        data = yf.download(symbol + ".IS", period="1d", interval="5m", progress=False)
+        if data.empty:
+            return "📊 Teknik veri alınamadı."
 
         close = data["Close"]
 
-        # RSI
+        # RSI Hesapla (14 periyotluk)
         delta = close.diff()
-        gain = delta.clip(lower=0)
-        loss = -delta.clip(upper=0)
+        gain = delta.where(delta > 0, 0)
+        loss = -delta.where(delta < 0, 0)
         avg_gain = gain.rolling(14).mean()
         avg_loss = loss.rolling(14).mean()
         rs = avg_gain / avg_loss
         rsi = 100 - (100 / (1 + rs))
         last_rsi = round(rsi.iloc[-1], 2)
-        rsi_durum = "Aşırı Alım" if last_rsi > 70 else "Aşırı Satım" if last_rsi < 30 else "Nötr"
 
-        # MACD
+        # MACD Hesapla (EMA 12-26)
         ema12 = close.ewm(span=12, adjust=False).mean()
         ema26 = close.ewm(span=26, adjust=False).mean()
         macd = ema12 - ema26
         signal = macd.ewm(span=9, adjust=False).mean()
         macd_signal = "Al" if macd.iloc[-1] > signal.iloc[-1] else "Sat"
 
-        # MA20 ve MA50
+        # Hareketli Ortalamalar (5m veriden)
         ma20 = round(close.rolling(20).mean().iloc[-1], 2)
         ma50 = round(close.rolling(50).mean().iloc[-1], 2)
 
-        return f"📊 RSI: {last_rsi} ({rsi_durum}) | MACD: {macd_signal} | MA20: {ma20} | MA50: {ma50}"
+        return f"📊 RSI: {last_rsi} | MACD: {macd_signal} | MA20: {ma20} | MA50: {ma50}"
 
     except Exception as e:
         print("Technical error:", e)
         return "📊 Teknik analiz hesaplanamadı."
+
 
 # === HABERLER ===
 def get_news(symbol):
