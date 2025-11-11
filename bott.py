@@ -1,7 +1,6 @@
 # bistbot
 import time
 import random
-import datetime as dt
 import requests
 import yfinance as yf
 from flask import Flask
@@ -18,15 +17,18 @@ def get_updates(offset=None):
     return requests.get(URL + "getUpdates", params=params).json()
 
 def send_message(chat_id, text):
-    requests.post(
-        URL + "sendMessage",
-        params={
-            "chat_id": chat_id,
-            "text": text,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True,
-        },
-    )
+    try:
+        requests.post(
+            URL + "sendMessage",
+            params={
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True,
+            },
+        )
+    except Exception as e:
+        print("Send error:", e)
 
 # === SAYI BİÇİMLENDİRME ===
 def format_number(num):
@@ -48,7 +50,6 @@ def get_price(symbol):
         time.sleep(random.uniform(1.0, 2.0))
         ticker = yf.Ticker(symbol.upper() + ".IS")
         info = ticker.info
-
         if not info or "currentPrice" not in info:
             return None
 
@@ -65,41 +66,36 @@ def get_price(symbol):
             "pddd": info.get("priceToBook"),
             "piyasa": format_number(info.get("marketCap")),
         }
-
     except Exception as e:
         print("Price error:", e)
         return None
 
-# === INVESTING.COM TEKNİK ANALİZ ===
-def get_investing_analysis(symbol):
-    url = "https://investing-real-time.p.rapidapi.com/technicalSummary"
-    query = {"symbol": f"{symbol}:TR"}
+# === TRADINGVIEW REAL-TIME (RapidAPI) ===
+def get_tradingview_analysis(symbol):
+    url = "https://tradingview-real-time.p.rapidapi.com/technicalSummary"
+    query = {"symbol": f"{symbol}:BIST"}
     headers = {
         "x-rapidapi-key": "1749e090ffmsh612a371009ddbcap1c2f2cjsnaa23aba94831",
-        "x-rapidapi-host": "investing-real-time.p.rapidapi.com"
+        "x-rapidapi-host": "tradingview-real-time.p.rapidapi.com"
     }
 
     try:
         r = requests.get(url, headers=headers, params=query, timeout=10)
-        print("Investing raw response:", r.text)  # 👈 ham metni göster
-        try:
-            data = r.json()
-        except Exception:
-            return "📊 Teknik analiz alınamadı (JSON parse hatası)."
+        print("TradingView raw response:", r.text)
+        data = r.json()
 
-        # API yapısına göre esnek kontrol
-        if "data" in data and isinstance(data["data"], dict):
-            inner = data["data"]
-            if "technical_summary" in inner:
-                return f"📊 Investing Analizi: {inner['technical_summary']}"
-            elif "summary" in inner:
-                return f"📊 Investing Analizi: {inner['summary']}"
-        if "summary" in data:
-            return f"📊 Investing Analizi: {data['summary']}"
-        return f"📊 Teknik analiz bulunamadı. ({list(data.keys())})"
+        summary = data.get("data", {}).get("technical_summary")
+        if summary:
+            return f"📊 TradingView Analizi: {summary}"
+
+        alt = data.get("summary") or data.get("signal") or data.get("recommendation")
+        if alt:
+            return f"📊 TradingView Analizi: {alt}"
+
+        return "📊 Teknik analiz bulunamadı (TradingView)."
     except Exception as e:
-        print("Investing API error:", e)
-        return "📊 Teknik analiz alınamadı (Investing)."
+        print("TradingView API error:", e)
+        return "📊 Teknik analiz alınamadı (TradingView)."
 
 # === HABERLER (GOOGLE RSS) ===
 def get_news(symbol):
@@ -131,7 +127,7 @@ def get_news(symbol):
 def build_message(symbol):
     info = get_price(symbol)
     news = get_news(symbol)
-    analysis = get_investing_analysis(symbol)  # doğrudan Investing'den çek
+    analysis = get_tradingview_analysis(symbol)
 
     if not info:
         return f"⚠️ {symbol} için veri alınamadı veya desteklenmiyor."
@@ -142,15 +138,13 @@ def build_message(symbol):
         lines.append(f"💰 Fiyat: {info['fiyat']} TL")
     if info.get("degisim") and info["degisim"] != "0.00%":
         lines.append(f"📉 Değişim: {info['degisim']}")
-
-    fiyat_bilgileri = []
-    if info.get("acilis"):
-        fiyat_bilgileri.append(f"Açılış: {info['acilis']}")
-    if info.get("kapanis"):
-        fiyat_bilgileri.append(f"Kapanış: {info['kapanis']}")
-    if fiyat_bilgileri:
-        lines.append("📊 " + " | ".join(fiyat_bilgileri))
-
+    if info.get("acilis") or info.get("kapanis"):
+        satir = []
+        if info.get("acilis"):
+            satir.append(f"Açılış: {info['acilis']}")
+        if info.get("kapanis"):
+            satir.append(f"Kapanış: {info['kapanis']}")
+        lines.append("📊 " + " | ".join(satir))
     if info.get("tavan") or info.get("taban"):
         satir = []
         if info.get("tavan"):
@@ -158,7 +152,6 @@ def build_message(symbol):
         if info.get("taban"):
             satir.append(f"🔽 Taban: {info['taban']}")
         lines.append(" | ".join(satir))
-
     if info.get("hacim"):
         lines.append(f"💸 Hacim: {info['hacim']}")
     if info.get("piyasa"):
@@ -172,7 +165,7 @@ def build_message(symbol):
         if detay:
             lines.append(" | ".join(detay))
 
-    # === TEKNİK ANALİZ (INVESTING) ===
+    # === TEKNİK ANALİZ ===
     lines.append("\n" + analysis)
     # === HABERLER ===
     lines.append("\n" + news)
@@ -181,9 +174,9 @@ def build_message(symbol):
 
     return "\n".join(lines)
 
-# === ANA DÖNGÜ ===
+# === ANA DÖNGÜ (tek yanıt düzeltildi) ===
 def main():
-    print("🚀 Borsa İstanbul Botu (Investing Entegre) çalışıyor...")
+    print("🚀 Borsa İstanbul Botu (TradingView Entegre) çalışıyor...")
     last_update_id = None
     while True:
         updates = get_updates(last_update_id)
@@ -197,7 +190,9 @@ def main():
                     print(f"Gelen istek: {text}")
                     reply = build_message(text)
                     send_message(chat_id, reply)
-                time.sleep(2)
+                # Çift yanıt engelleme
+                time.sleep(3)
+        time.sleep(1)
 
 # === KEEP ALIVE ===
 app = Flask(__name__)
