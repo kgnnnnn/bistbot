@@ -177,6 +177,7 @@ def build_message(symbol):
         if fkpddd: lines.append(" | ".join(fkpddd))
 
     # --- Teknik (RSI/EMA → ÖNERİ) ---
+        # --- Teknik (RSI/EMA → ÖNERİ) ---
     if tech and (tech.get("rsi") is not None or (tech.get("ema50") is not None and tech.get("ema200") is not None)):
         rsi_val = tech.get("rsi")
         ema50   = tech.get("ema50")
@@ -187,12 +188,15 @@ def build_message(symbol):
         overall   = combine_recommendation(ema_sig, rsi_label)
 
         parts = []
-        parts.append(f"RSI: {round(float(rsi_val),2) if rsi_val is not None else '—'} ({rsi_label})")
-        if ema50 is not None and ema200 is not None:
-            parts.append(f"EMA50: {round(float(ema50),2)} | EMA200: {round(float(ema200),2)} → EMA: {ema_sig}")
-        else:
-            parts.append("EMA50/EMA200: — → EMA: NÖTR")
+        # RSI(G) → Günlük RSI değeri
+        parts.append(f"RSI(G): {round(float(rsi_val),2) if rsi_val is not None else '—'} ({rsi_label})")
+
+        # EMA(G) → Günlük EMA kesişimi (değerleri yazmadan sadece sinyal)
+        parts.append(f"EMA(G): {ema_sig}")
+
+        # Öneri kısmı aynı kalıyor
         parts.append(f"Öneri: {overall}")
+
         lines.append("\n📊 " + " | ".join(parts))
     else:
         lines.append("\n📊 Teknik analiz alınamadı.")
