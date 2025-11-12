@@ -304,14 +304,15 @@ def _broadcast_favorites(now_label="Özet"):
     for uid, fav_list in favorites.items():
         if not fav_list:
             continue
-        lines = [f"📊 <b>Favori Hisselerin {now_label} Özeti</b> — {ts}"]
+        send_message(uid, f"📊 <b>Favori Hisselerin {now_label} Özeti</b> — {ts}")
         for sym in fav_list[:20]:  # güvenlik: kullanıcı başına ilk 20 hisse
             try:
-                lines.append(build_favorite_line(sym.upper()))
-                time.sleep(0.2)  # API nazikliği
+                msg = build_message(sym.upper())
+                send_message(uid, msg)
+                time.sleep(1)  # API limit nazikliği
             except Exception as e:
-                lines.append(f"• {sym}: hata ({e})")
-        send_message(uid, "\n".join(lines))
+                send_message(uid, f"⚠️ {sym} gönderilirken hata oluştu: {e}")
+
 
 # =============== ANA DÖNGÜ ===============
 def main():
@@ -426,6 +427,10 @@ def run():
     app.run(host='0.0.0.0', port=port)
 
 Thread(target=run).start()
+
+# --- TEST AMAÇLI MANUEL FAVORİ GÖNDERİM ---
+_broadcast_favorites(now_label="Test (Manuel)")
+
 
 if __name__ == "__main__":
     main()
