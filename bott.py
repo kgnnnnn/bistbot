@@ -189,83 +189,38 @@ def combine_recommendation(ema_sig, rsi_label):
     return "NÖTR"
 
 ### BILANCO OZET ###
-from datetime import datetime
-import requests, os, re
-
 def get_balance_summary(symbol):
-    """İş Yatırım finansal tablo API'sinden en güncel bilanço verisini özetler (proxy destekli)."""
-    symbol = symbol.upper().strip()
+    """Investing.com finansal özet sayfasından bilanço verisini özetler."""
+    import requests, re, os
+    from bs4 import BeautifulSoup
     api_key = os.getenv("OPENAI_API_KEY")
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
-    # 🔹 Tarihler
-    start_date = "2024-01-01"
-    end_date = datetime.now().strftime("%Y-%m-%d")
-    url = (
-        "https://www.isyatirim.com.tr/_Layouts/15/IsYatirim.Website/Common/"
-        f"Data.aspx/GetFinancialTable?companyCode={symbol}"
-        f"&startdate={start_date}&enddate={end_date}"
-    )
-
+    url = f"https://tr.investing.com/equities/{symbol.lower()}-financial-summary"
     try:
-        # --- 1️⃣ Önce doğrudan dene
         r = requests.get(url, headers=headers, timeout=15)
         if r.status_code != 200:
-            print("İş Yatırım erişimi başarısız:", r.status_code)
-            raise Exception("Doğrudan erişim başarısız")
+            return {"summary": f"⚠️ {symbol} bilanço sayfasına erişilemedi."}
 
-    except Exception:
-        # --- 2️⃣ Proxy fallback
-        proxy_base = os.getenv("PROXY_URL")  # örn: https://seninappadi.onrender.com/fetch
-        if not proxy_base:
-            return {"summary": "⚠️ İş Yatırım API erişim hatası. (Proxy URL tanımlı değil)"}
-        proxy_url = f"{proxy_base}?url={url}"
-        print("Proxy üzerinden deneniyor:", proxy_url)
-        try:
-            r = requests.get(proxy_url, headers=headers, timeout=25)
-            if r.status_code != 200:
-                return {"summary": "⚠️ Proxy de erişemedi."}
-        except Exception as e:
-            print("Proxy hata:", e)
-            return {"summary": "⚠️ Proxy erişimi başarısız."}
+        soup = BeautifulSoup(r.text, "html.parser")
+        tables = soup.find_all("table")
 
-    # --- JSON parse ---
-    try:
-        data = r.json()
-    except Exception:
-        return {"summary": "⚠️ JSON parse hatası veya geçersiz yanıt."}
+        if not tables:
+            return {"summary": "⚠️ Finansal tablo bulunamadı."}
 
-    if "data" not in data or not data["data"]:
-        return {"summary": "⚠️ Güncel bilanço verisi bulunamadı."}
+        table_text = " ".join([t.get_text(" ", strip=True) for t in tables[:1]])
+        prompt = f"""
+Aşağıda {symbol} hissesine ait Investing.com finansal tablo verisi yer alıyor:
+{table_text[:3500]}
 
-    # 🔍 En son dönem kaydı
-    latest = data["data"][0]
-    yil = latest.get("Yil", "")
-    donem = latest.get("Donem", "")
-    net_kar = latest.get("NetKar", "")
-    ciro = latest.get("Satislar", "") or latest.get("NetSatislar", "")
-    ozsermaye = latest.get("Ozkaynaklar", "")
-    borc = latest.get("KisaVadeliYukumlulukler", "")
-
-    # --- OpenAI özet ---
-    prompt = f"""
-Aşağıda {symbol} hissesine ait {yil} {donem} dönemi finansal verileri yer alıyor:
-Net Kar: {net_kar}
-Ciro: {ciro}
-Özsermaye: {ozsermaye}
-Borç: {borc}
-
-Bu verilere dayanarak 3-4 cümlelik sade, net ve genel bir bilanço özeti yaz.
+Bu verilere göre 3-4 cümlelik sade bir bilanço özeti yaz.
+Kâr, ciro, borç, özsermaye değişimlerinden bahset.
 Yatırım tavsiyesi verme.
 """
 
-    try:
-        resp = requests.post(
+        ai = requests.post(
             "https://api.openai.com/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            },
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json={
                 "model": "gpt-4o-mini",
                 "messages": [{"role": "user", "content": prompt}],
@@ -275,17 +230,15 @@ Yatırım tavsiyesi verme.
             timeout=40,
         )
 
-        if resp.status_code != 200:
-            print("AI hata:", resp.text[:200])
+        if ai.status_code != 200:
             return {"summary": "⚠️ AI bilanço özeti alınamadı."}
 
-        msg = resp.json()["choices"][0]["message"]["content"].strip()
+        msg = ai.json()["choices"][0]["message"]["content"].strip()
         return {"summary": f"🧾 {msg}"}
 
     except Exception as e:
-        print("AI özet hata:", e)
-        return {"summary": "⚠️ AI bilanço özeti alınamadı."}
-
+        print("Hata:", e)
+        return {"summary": "⚠️ Bilanço verisi alınamadı."}
 
 
 ##-------------------------MESAJ OLUŞTURMA-------------------------##
