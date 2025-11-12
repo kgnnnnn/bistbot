@@ -99,54 +99,37 @@ def analyze_news_with_ai(news_text):
         print("AI yorum hatası:", e, flush=True)
         return "⚠️ AI yorum alınamadı."
 
-# =============== TRADINGVIEW (Canlı Fiyat + RSI, EMA) ===============
+# =============== YAHOO FİYAT & F/K, PD/DD (tek deneme) ===============
+def get_price(symbol):
+    """YF rate-limit olursa sessizce None döner; mesaj yine tek parça gönderilir."""
+    try:
+        time.sleep(random.uniform(0.3, 0.6))
+        ticker = yf.Ticker(symbol.upper() + ".IS")
+        info = ticker.info
+        if not info or "currentPrice" not in info or info["currentPrice"] is None:
+            return None
+        return {
+            "url": f"https://finance.yahoo.com/quote/{symbol}.IS",
+            "fiyat": info.get("currentPrice"),
+            "degisim": f"{(info.get('regularMarketChangePercent') or 0):.2f}%",
+            "acilis": info.get("open"),
+            "kapanis": info.get("previousClose"),
+            "tavan": info.get("dayHigh"),
+            "taban": info.get("dayLow"),
+            "hacim": format_number(info.get("volume")),
+            "fk": info.get("trailingPE"),
+            "pddd": info.get("priceToBook"),
+            "piyasa": format_number(info.get("marketCap")),
+        }
+    except Exception:
+        return None
+
+# =============== TRADINGVIEW REAL-TIME (RSI, EMA50/EMA200) ===============
+TV_URL = "https://tradingview-real-time.p.rapidapi.com/technicals/summary"
 TV_HEADERS = {
     "x-rapidapi-key": "1749e090ffmsh612a371009ddbcap1c2f2cjsnaa23aba94831",
     "x-rapidapi-host": "tradingview-real-time.p.rapidapi.com",
 }
-
-def get_tv_price(symbol):
-    """TradingView'dan canlı fiyat, açılış, yüksek, düşük değerleri al."""
-    try:
-        r = requests.get(
-            "https://tradingview-real-time.p.rapidapi.com/price",
-            headers=TV_HEADERS,
-            params={"query": symbol.upper()},  # ✅ symbol → query olarak düzeltildi
-            timeout=8,
-        )
-        data = r.json().get("data", {})
-        if not data:
-            return None
-        return {
-            "fiyat": data.get("price"),
-            "acilis": data.get("open"),
-            "tavan": data.get("high"),
-            "taban": data.get("low"),
-            "hacim": format_number(data.get("volume")),
-        }
-    except Exception as e:
-        print("get_tv_price hata:", e, flush=True)
-        return None
-
-
-def get_tv_analysis(symbol):
-    try:
-        r = requests.get(
-            "https://tradingview-real-time.p.rapidapi.com/technicals/summary",
-            headers=TV_HEADERS,
-            params={"query": symbol.upper()},
-            timeout=8,
-        )
-        data = r.json().get("data", {})
-        return {
-            "rsi": data.get("RSI"),
-            "ema50": data.get("EMA50"),
-            "ema200": data.get("EMA200"),
-        }
-    except Exception as e:
-        print("get_tv_analysis hata:", e, flush=True)
-        return None
-
 
 def map_rsi_label(rsi):
     try:
@@ -159,13 +142,13 @@ def map_rsi_label(rsi):
     if r >= 70: return "SAT"
     return "NÖTR"
 
-
 def map_ema_signal(ema50, ema200):
     try:
-        return "AL" if float(ema50) >= float(ema200) else "SAT"
+        e50 = float(ema50)
+        e200 = float(ema200)
+        return "AL" if e50 >= e200 else "SAT"
     except:
         return "NÖTR"
-
 
 def combine_recommendation(ema_sig, rsi_label):
     if ema_sig == "AL" and rsi_label in ("AL", "GÜÇLÜ AL"):
@@ -174,20 +157,28 @@ def combine_recommendation(ema_sig, rsi_label):
         return "SATIŞ"
     return "NÖTR"
 
-
-# =============== YAHOO SADE (Piyasa Değeri & Hacim) ===============
-def get_price(symbol):
-    """Yahoo sadece hacim/piyasa verisi için fallback olarak kullanılır."""
+def get_tv_analysis(symbol):
     try:
-        ticker = yf.Ticker(symbol.upper() + ".IS")
-        info = ticker.info or {}
+        query = {"query": symbol.upper()}
+        print(f"📡 TV /technicals/summary {query}", flush=True)
+        r = requests.get(TV_URL, headers=TV_HEADERS, params=query, timeout=8)
+        data = r.json()
+        d = data.get("data") if isinstance(data, dict) else None
+
+        if not d:
+            print(f"⚠️ TradingView veri boş döndü: {data}", flush=True)
+            return None
+
         return {
-            "piyasa": format_number(info.get("marketCap")),
-            "hacim": format_number(info.get("volume")),
+            "rsi": d.get("RSI"),
+            "ema50": d.get("EMA50"),
+            "ema200": d.get("EMA200"),
         }
+
     except Exception as e:
-        print("get_price hata:", e, flush=True)
-        return {}
+        print(f"⚠️ TradingView hata: {e}", flush=True)
+        return None
+
 
 # =============== BİLANÇO (KAP + AI) ===============
 def get_balance_summary(symbol):
