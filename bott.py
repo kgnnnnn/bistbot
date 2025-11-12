@@ -5,7 +5,7 @@ import re
 import requests
 import yfinance as yf
 from io import BytesIO
-from flask import Flask
+from flask import Flask, request
 from threading import Thread
 from PyPDF2 import PdfReader
 import openai
