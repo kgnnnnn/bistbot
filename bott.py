@@ -4,18 +4,14 @@ import os
 import re
 import requests
 import yfinance as yf
-from io import BytesIO
-from flask import Flask, request
+from flask import Flask
 from threading import Thread
-from PyPDF2 import PdfReader
 import openai
 import xml.etree.ElementTree as ET
-import pandas as pd
-from bs4 import BeautifulSoup
 import html
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from urllib.parse import quote
+
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 print("DEBUG OPENAI KEY:", openai.api_key[:10] if openai.api_key else "YOK", flush=True)
