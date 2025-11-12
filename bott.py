@@ -198,14 +198,15 @@ def combine_recommendation(ema_sig, rsi_label):
     return "NÖTR"
 
 
-# ==== BILANÇO ÖZETİ: Sadece 2025 ve Aktif Çeyrek Odaklı ====
+# ==== BILANÇO ÖZETİ: 2025 + Dinamik Önceki Çeyrek (Q) / 9 Aylık / Multi-Varyasyon Analizi ====
 
 import re, html, time, random, requests, xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from urllib.parse import quote
 
 BAL_NEWS_DOMAINS = [
-    "kap.org.tr",
+    "paratic.com",
+    "bigpara.hurriyet.com.tr",
     "bloomberght.com",
     "dunya.com",
     "borsagundem.com",
@@ -216,6 +217,15 @@ BAL_NEWS_DOMAINS = [
     "cnnturk.com",
     "patronlardunyasi.com",
     "haberturk.com",
+    "finansgundem.com",
+    "investing.com",
+    "odatv.com",
+    "politikam.com",
+    "milliyet.com.tr",
+    "isyatirim.com.tr",
+    "borsacoo.com",
+    "albyatirim.com.tr",
+    "qnbinvest.com.tr",
 ]
 
 COMMON_TICKERS = [
@@ -232,10 +242,21 @@ FIN_KEYWORDS_NEAR = {
     "ebitda":     ["ebitda"],
 }
 
-FIN_KEYWORDS_REQUIRED = [
-    "bilanço", "bilanco", "finansal sonuç", "finansal sonuçlar", "finansal", "faaliyet raporu",
-    "net kâr", "net kar", "ciro", "gelir", "zarar", "özsermaye", "özkaynak", "borç", "ebitda",
-    "çeyrek", "quarter", "Q1", "Q2", "Q3", "Q4", "yarıyıl", "9 aylık", "6 aylık", "dokuz aylık", "3 aylık"
+# 🔍 40+ varyasyon: tüm çeyrek, 9 aylık, yıllık ifade biçimleri
+PERIOD_KEYWORDS = [
+    # Q ve rakam kombinasyonları
+    "q1","q1/1","1q","q 1","1.q","1. çeyrek","birinci çeyrek","first quarter","1st quarter",
+    "q2","q2/2","2q","q 2","2.q","2. çeyrek","ikinci çeyrek","second quarter","2nd quarter",
+    "q3","q3/3","3q","q 3","3.q","3. çeyrek","üçüncü çeyrek","third quarter","3rd quarter",
+    "q4","q4/4","4q","q 4","4.q","4. çeyrek","dördüncü çeyrek","fourth quarter","4th quarter",
+    # 6 ve 9 aylık dönemler
+    "6 aylık","altı aylık","yarıyıl","1h","first half","half year","yarı yıl","6 months","half-year",
+    "9 aylık","dokuz aylık","9 ay","ilk 9 ay","ilk dokuz ay","nine months","first nine months","9a","9a25","9a2025",
+    # yıllık dönemler
+    "12 aylık","yıllık","annual","year-end","year end","yıl sonu","one year","full year",
+    # varyasyon + yıl kombinasyonları
+    "2025 q1","2025 q2","2025 q3","2025 q4",
+    "q3 2025","q4 2025","3. çeyrek 2025","4. çeyrek 2025","9 aylık 2025","dokuz aylık 2025","9a 2025",
 ]
 
 NEARBY_WINDOW = 120
@@ -264,26 +285,44 @@ def _safe_get(url: str) -> str:
     except Exception:
         return ""
 
-def _normalize_number(text):
-    if not text:
-        return None
-    t = text.lower().strip().replace("\u00a0", " ").replace(" ", "")
-    multiplier = 1
-    for word, mul in UNIT_MAP.items():
-        if word in t:
-            multiplier = mul
-            t = t.replace(word, "")
-    if "," in t and "." in t:
-        t = t.replace(".", "").replace(",", ".")
-    elif "," in t and "." not in t:
-        t = t.replace(",", ".")
+def _detect_previous_quarter_keywords():
+    """Şu anki aya göre bir önceki çeyreğe uygun varyasyonları döndürür."""
+    ay = datetime.now().month
+    if ay <= 3:
+        target = ["q4","4. çeyrek","dördüncü çeyrek","year-end","yıl sonu","annual"]
+    elif ay <= 6:
+        target = ["q1","1. çeyrek","birinci çeyrek","first quarter"]
+    elif ay <= 9:
+        target = ["q2","2. çeyrek","ikinci çeyrek","second quarter","6 aylık","yarıyıl"]
     else:
-        t = t.replace(".", "")
-    try:
-        val = float(t) * multiplier
-        return int(round(val)) if abs(val - round(val)) < 1e-4 else val
-    except Exception:
-        return None
+        target = ["q3","3. çeyrek","üçüncü çeyrek","third quarter","9 aylık","dokuz aylık","first nine months"]
+    return target
+
+def _matches_valid_2025_period(title: str, html_text: str) -> bool:
+    """2025 yılı ve geçerli (önceki çeyrek) varyasyonlardan biri geçmeli."""
+    combined = (title + " " + html_text).lower()
+    if "2025" not in combined:
+        return False
+
+    # Hedef dönem varyasyonları (dinamik)
+    target_keywords = _detect_previous_quarter_keywords()
+    period_hits = [kw for kw in PERIOD_KEYWORDS if any(t in kw for t in target_keywords)]
+    if not any(p in combined for p in period_hits):
+        return False
+
+    # Finansal anahtar kelime de olmalı
+    fin_words = ["bilanço","bilanco","finansal sonuç","net kâr","net kar","ciro","gelir","faaliyet raporu"]
+    return any(f in combined for f in fin_words)
+
+def _belongs_to_symbol(symbol: str, title: str, html_text: str) -> bool:
+    s = (symbol or "").upper()
+    joined = (title + " " + html_text).upper()
+    if s not in joined:
+        return False
+    for tk in COMMON_TICKERS:
+        if tk != s and joined.count(tk) >= 2:
+            return False
+    return True
 
 def _extract_numbers_near_keywords(text, keywords_map):
     res = {k: [] for k in keywords_map.keys()}
@@ -295,59 +334,20 @@ def _extract_numbers_near_keywords(text, keywords_map):
                 end = min(len(low), m.end() + NEARBY_WINDOW)
                 window = low[start:end]
                 for num_m in NUM_CANDIDATE_RE.finditer(window):
-                    norm = _normalize_number(num_m.group(0))
-                    if norm is not None:
-                        res[field].append(norm)
+                    num = num_m.group(0)
+                    num = num.replace(",", ".").replace(" ", "")
+                    for unit, mul in UNIT_MAP.items():
+                        if unit in num.lower():
+                            num = num.lower().replace(unit, "")
+                            try:
+                                val = float(num) * mul
+                                res[field].append(val)
+                            except: pass
     return res
-
-def _contains_valid_2025_quarter(title: str, url: str, html_text: str) -> bool:
-    """Sadece 2025 ve aktif çeyreğe göre bir önceki döneme ait haberleri kabul eder."""
-    content = (title + " " + url + " " + html_text).lower()
-    if "2025" not in content:
-        return False
-
-    # finansal kelimeler zorunlu
-    fin_kw = ["bilanço","bilanco","finansal sonuç","net kâr","net kar","ciro","gelir","faaliyet raporu"]
-    if not any(k in content for k in fin_kw):
-        return False
-
-    # aktif çeyrek hesapla (bir önceki dönemi al)
-    month = datetime.now().month
-    if month <= 3:
-        aktif = ["4. çeyrek", "q4", "dördüncü çeyrek", "yıl sonu", "12 aylık"]
-    elif month <= 6:
-        aktif = ["1. çeyrek", "q1", "ilk çeyrek", "birinci çeyrek", "3 aylık"]
-    elif month <= 9:
-        aktif = ["2. çeyrek", "q2", "ikinci çeyrek", "6 aylık", "yarıyıl"]
-    else:
-        aktif = ["3. çeyrek", "q3", "üçüncü çeyrek", "9 aylık", "dokuz aylık", "9a25", "9a2025"]
-
-    # aktif dönem varsa kabul et
-    if not any(a in content for a in aktif):
-        return False
-
-    # eski çeyrekleri at
-    eski = ["1. çeyrek", "q1", "2. çeyrek", "q2", "ilk çeyrek", "ikinci çeyrek"]
-    if any(e in content for e in eski if e not in aktif):
-        return False
-
-    return True
-
-def _belongs_to_symbol(symbol: str, title: str, url: str, html_text: str) -> bool:
-    s = (symbol or "").upper()
-    joined = " ".join([title or "", url or "", html_text or ""]).upper()
-    if s not in joined:
-        return False
-    for tk in COMMON_TICKERS:
-        if tk == s:
-            continue
-        if joined.count(tk) >= 2:
-            return False
-    return True
 
 def _fetch_gnews_items(symbol: str, domain: str):
     ts = int(time.time() * 1000)
-    query = f'{symbol} ("bilanço" OR "net kâr" OR "net kar" OR "ciro" OR "gelir" OR "zarar" OR "finansal sonuç" OR "faaliyet raporu" OR "çeyrek" OR "Q3" OR "Q4") site:{domain}'
+    query = f'{symbol} (bilanço OR finansal sonuç OR net kâr OR ciro OR faaliyet raporu) site:{domain}'
     url = f"https://news.google.com/rss/search?q={quote(query)}&hl=tr&gl=TR&ceid=TR:tr&t={ts}&nocache={random.randint(10000,9999999)}"
     try:
         r = requests.get(url, timeout=12)
@@ -355,110 +355,86 @@ def _fetch_gnews_items(symbol: str, domain: str):
             return []
         raw = r.text.encode("utf-8", "ignore").decode("utf-8", "ignore").replace("&", "&amp;")
         root = ET.fromstring(raw)
-        out = []
+        items = []
         for it in root.findall(".//item"):
-            title = (it.find("title").text or "").strip()
-            link = (it.find("link").text or "").strip()
-            pub = (it.find("pubDate").text or "").strip() if it.find("pubDate") is not None else ""
-            out.append({"title": title, "link": link, "pub": pub, "domain": domain})
-        return out
+            items.append({
+                "title": (it.find("title").text or "").strip(),
+                "link": (it.find("link").text or "").strip(),
+                "pub": (it.find("pubDate").text or "").strip() if it.find("pubDate") is not None else "",
+                "domain": domain
+            })
+        return items
     except Exception as e:
         print("gnews err", domain, e, flush=True)
         return []
 
-def _format_human(val):
-    v = float(val)
+def _format_human(v):
     if v >= 1_000_000_000:
         return f"{round(v/1_000_000_000,2)} milyar TL"
     if v >= 1_000_000:
         return f"{round(v/1_000_000,2)} milyon TL"
     if v >= 1_000:
         return f"{round(v/1_000,2)} bin TL"
-    return f"{int(v) if v.is_integer() else v} TL"
+    return f"{int(v)} TL"
 
 def get_balance_summary(symbol: str):
-    """Sadece 2025 ve bir önceki çeyrek finansal haberlerini analiz eder."""
-    sym = (symbol or "").strip().upper()
+    sym = symbol.strip().upper()
     if not sym:
         return {"summary": "📄 Geçersiz hisse kodu."}
 
+    # Haber adaylarını topla
     domains = list(BAL_NEWS_DOMAINS)
     random.shuffle(domains)
     candidates = []
     for d in domains:
-        items = _fetch_gnews_items(sym, d)
-        if items:
-            candidates.extend(items)
+        candidates.extend(_fetch_gnews_items(sym, d))
         if len(candidates) > 100:
             break
 
     picked = []
     for it in candidates:
-        title, link, pub = it["title"], it["link"], it["pub"]
-        if not link.startswith("http"):
-            continue
-
+        title, link = it["title"], it["link"]
+        if not link.startswith("http"): continue
         html_text = _safe_get(link)
-        if not html_text:
-            continue
+        if not html_text: continue
 
-        if not _contains_valid_2025_quarter(title, link, html_text):
-            continue
-
-        if not _belongs_to_symbol(sym, title, link, html_text):
-            continue
+        if not _matches_valid_2025_period(title, html_text): continue
+        if not _belongs_to_symbol(sym, title, html_text): continue
 
         plain = re.sub(r"<[^>]+>", " ", html_text)
         numbers = _extract_numbers_near_keywords(plain, FIN_KEYWORDS_NEAR)
-
         picked.append({
-            "title": title, "link": link, "pub": pub, "domain": it["domain"], "numbers": numbers
+            "title": title, "link": link, "pub": it["pub"], "domain": it["domain"], "numbers": numbers
         })
-
         if len(picked) >= 5:
             break
 
     if not picked:
-        return {"summary": "📰 2025 yılına ait güncel bilanço haberi bulunamadı."}
+        return {"summary": "🏦 Bilanço Özeti\n📰 2025 yılına ait güncel bilanço haberi bulunamadı."}
 
-    # alan bazında değer seçimi
+    # Rakam seçimi
     agg = {k: [] for k in FIN_KEYWORDS_NEAR}
     for p in picked:
         for fld, vals in p["numbers"].items():
             agg[fld].extend(vals)
 
-    final = {}
-    for fld, arr in agg.items():
-        if not arr:
-            final[fld] = None
-            continue
-        counts = {}
-        for v in arr:
-            k = int(round(v)) if isinstance(v, (int, float)) else v
-            counts[k] = counts.get(k, 0) + 1
-        best_key = max(counts.items(), key=lambda x: (x[1], x[0]))[0]
-        final[fld] = best_key
-
     parts = []
-    if final.get("net_income") is not None:
-        parts.append(f"💸 Net kâr: {_format_human(final['net_income'])}")
-    if final.get("revenue") is not None:
-        parts.append(f"🏢 Ciro/Gelir: {_format_human(final['revenue'])}")
-    if final.get("ebitda") is not None:
-        parts.append(f"📈 EBITDA: {_format_human(final['ebitda'])}")
-    if final.get("equity") is not None:
-        parts.append(f"🔐 Özsermaye: {_format_human(final['equity'])}")
-    if final.get("debt") is not None:
-        parts.append(f"💳 Toplam Borç: {_format_human(final['debt'])}")
+    for fld, arr in agg.items():
+        if not arr: continue
+        val = sorted(arr)[-1]
+        label = {
+            "net_income": "💸 Net kâr",
+            "revenue": "🏢 Ciro",
+            "ebitda": "📈 EBITDA",
+            "equity": "🔐 Özsermaye",
+            "debt": "💳 Toplam Borç"
+        }[fld]
+        parts.append(f"{label}: {_format_human(val)}")
 
-    summary = "📰 2025 {aktif dönem} haberlerinden net rakam çıkarılamadı." if not parts else \
-              "🤖 <b>Bilanço Özeti (2025 Güncel Çeyrek)</b>\n" + "\n".join(parts)
-
+    summary = "🤖 <b>Bilanço Özeti (haber tabanlı)</b>\n" + "\n".join(parts)
     lines = [summary, "\n🔗 <b>Kaynaklar</b>"]
     for p in picked[:3]:
-        pub = p["pub"].split("+")[0].strip() if p["pub"] else ""
-        lines.append(f"• <a href='{p['link']}'>{html.escape(p['title'])}</a> ({p['domain']}) {('— ' + pub) if pub else ''}")
-
+        lines.append(f"• <a href='{p['link']}'>{html.escape(p['title'])}</a> ({p['domain']})")
     return {"summary": "\n".join(lines)}
 
 
