@@ -2,8 +2,8 @@ import time, random, os, requests, yfinance as yf
 from flask import Flask
 from threading import Thread
 import openai
-import os, math
-from isyatirimhisse import fetch_financials
+import xml.etree.ElementTree as ET
+import re
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 print("DEBUG OPENAI KEY:", openai.api_key[:10] if openai.api_key else "YOK", flush=True)
@@ -14,9 +14,7 @@ URL = f"https://api.telegram.org/bot{BOT_TOKEN}/"
 # =============== TELEGRAM ===============
 def get_updates(offset=None):
     try:
-        r = requests.get(URL + "getUpdates",
-                         params={"timeout": 100, "offset": offset},
-                         timeout=100)
+        r = requests.get(URL + "getUpdates", params={"timeout": 100, "offset": offset}, timeout=100)
         return r.json()
     except Exception as e:
         print("get_updates error:", e, flush=True)
@@ -26,7 +24,12 @@ def send_message(chat_id, text):
     try:
         requests.post(
             URL + "sendMessage",
-            params={"chat_id": chat_id, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True},
+            params={
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True,
+            },
             timeout=10,
         )
     except Exception as e:
@@ -53,7 +56,6 @@ def get_news(symbol):
         r = requests.get(url, timeout=8)
         if r.status_code != 200:
             return "📰 Haberler alınamadı."
-        import xml.etree.ElementTree as ET
         root = ET.fromstring(r.text)
         items = root.findall(".//item")[:3]
         if not items:
@@ -72,13 +74,10 @@ def get_news(symbol):
 
 # =============== HABER ANALİZİ (OpenAI - Kriptos AI) ===============
 def analyze_news_with_ai(news_text):
-    """Son 3 haber başlığını özetleyip, kısa bir piyasa hissiyatı yorumu döndürür."""
     try:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             return "⚠️ AI yorum yapılamadı (API anahtarı eksik)."
-
-        # Eğer haber metni Google RSS default mesajlarından biri ise (örneğin 'Haberler alınamadı')
         if "Haberler alınamadı" in news_text or "Lütfen Hisse Kodunu Doğru Giriniz" in news_text:
             return "⚠️ Yorum yapılacak geçerli haber bulunamadı."
 
@@ -91,10 +90,7 @@ def analyze_news_with_ai(news_text):
 
         response = requests.post(
             "https://api.openai.com/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json={
                 "model": "gpt-4o-mini",
                 "messages": [{"role": "user", "content": prompt}],
@@ -103,22 +99,18 @@ def analyze_news_with_ai(news_text):
             },
             timeout=15,
         )
-
         if response.status_code != 200:
             print("AI HTTP Hata:", response.text, flush=True)
             return "⚠️ AI yorum alınamadı."
-
         data = response.json()
         msg = data.get("choices", [{}])[0].get("message", {}).get("content")
         return msg.strip() if msg else "⚠️ AI yorum alınamadı."
-
     except Exception as e:
         print("AI yorum hatası:", e, flush=True)
         return "⚠️ AI yorum alınamadı."
 
-# =============== YAHOO FİYAT & F/K, PD/DD (tek deneme) ===============
+# =============== FİYAT VERİSİ (YAHOO) ===============
 def get_price(symbol):
-    """YF rate-limit olursa sessizce None döner; mesaj yine tek parça gönderilir."""
     try:
         time.sleep(random.uniform(0.3, 0.6))
         ticker = yf.Ticker(symbol.upper() + ".IS")
@@ -141,7 +133,7 @@ def get_price(symbol):
     except Exception:
         return None
 
-# =============== TRADINGVIEW REAL-TIME (RSI, EMA50/EMA200) ===============
+# =============== TRADINGVIEW (RSI, EMA50/200) ===============
 TV_URL = "https://tradingview-real-time.p.rapidapi.com/technicals/summary"
 TV_HEADERS = {
     "x-rapidapi-key": "1749e090ffmsh612a371009ddbcap1c2f2cjsnaa23aba94831",
@@ -181,142 +173,79 @@ def get_tv_analysis(symbol):
         r = requests.get(TV_URL, headers=TV_HEADERS, params=query, timeout=8)
         data = r.json()
         d = data.get("data") if isinstance(data, dict) else None
-
         if not d:
             print(f"⚠️ TradingView veri boş döndü: {data}", flush=True)
             return None
-
         return {
             "rsi": d.get("RSI"),
             "ema50": d.get("EMA50"),
             "ema200": d.get("EMA200"),
         }
-
     except Exception as e:
         print(f"⚠️ TradingView hata: {e}", flush=True)
         return None
 
+# =============== KAP + GOOGLE NEWS + AI BİLANÇO ===============
+def get_balance_summary(symbol):
+    symbol = symbol.upper().strip()
+    api_key = os.getenv("OPENAI_API_KEY")
 
-# =============== YFINANCE BİLANÇO ÖZETİ (Temel Finansallar) ===============
+    # --- 1️⃣ KAP RSS ---
+    try:
+        url = "https://www.kap.org.tr/tr/RssFeed/All"
+        r = requests.get(url, timeout=15)
+        if r.status_code == 200:
+            root = ET.fromstring(r.text)
+            items = root.findall(".//item")
+            for it in items[:300]:
+                title = (it.findtext("title") or "").upper()
+                link = it.findtext("link") or ""
+                if symbol in title and ("FİNANSAL" in title or "BİLANÇO" in title):
+                    pub = it.findtext("pubDate") or ""
+                    return {
+                        "period": f"KAP Duyurusu ({pub})",
+                        "summary": f"📎 <a href='{link}'>Son finansal rapor PDF</a>\n{title}",
+                        "source": "KAP RSS"
+                    }
+    except Exception as e:
+        print("KAP RSS hata:", e, flush=True)
 
-
-def _pick(df, patterns):
-    # satır adında geçen kalemleri esnek yakala (Türkçe varyasyonlar)
-    # df kolon/şema farklı olabilir; hem 'Kalem' hem 'item' olasılıklarını dene
-    name_col = 'Kalem' if 'Kalem' in df.columns else ('item' if 'item' in df.columns else None)
-    if not name_col: 
-        return None
-    mask = False
-    for p in patterns:
-        mask = mask | df[name_col].str.contains(p, case=False, regex=True, na=False)
-    sub = df[mask].copy()
-    if sub.empty:
-        return None
-    # En son dönem kolonunu/alanını bul
-    # Geniş formattaysa son sütunu, uzun formattaysa 'Period' ya da 'period' + 'Value'
-    if 'Period' in df.columns and ('Value' in df.columns or 'value' in df.columns):
-        vcol = 'Value' if 'Value' in df.columns else 'value'
-        # aynı kalemden birden fazla dönem varsa en yeniyi al
-        sub = sub.sort_values('Period').tail(1)
-        return sub.iloc[0][vcol]
-    else:
-        # geniş form: ilk iki sütun meta, sonrası dönem sütunlarıdır varsay
-        period_cols = [c for c in sub.columns if c not in ('Sembol','Symbol','Kalem','item','Grup','Group','Para','Currency')]
-        if not period_cols:
-            return None
-        last = period_cols[-1]
-        # sayıya çevir
-        val = sub.iloc[0][last]
-        try:
-            return float(val)
-        except Exception:
-            # 1.234,56 gibi değerleri normalize et
-            if isinstance(val, str):
-                v = val.replace('.', '').replace(',', '.')
-                try:
-                    return float(v)
-                except Exception:
-                    return None
-            return None
-
-import os, math
-from isyatirimhisse import fetch_financials
-
-def get_balance_summary(symbol: str):
-    """
-    İş Yatırım verisinden bilanço/gelir tablosu özetini çeker.
-    Otomatik olarak uygun financial_group'u bulur.
-    """
-    groups = ["3", "2", "1"]  # sırayla dene: UFRS_K, UFRS, XI_29
-    for g in groups:
-        try:
-            df = fetch_financials(
-                symbols=symbol.upper(),
-                start_year=2015,
-                end_year=2100,
-                exchange="TRY",
-                financial_group=g
-            )
-            if df is not None and len(df) > 0:
-                break
-        except Exception:
-            df = None
-    if df is None or len(df) == 0:
-        print(f"⚠️ İş Yatırım: {symbol} için veri bulunamadı.")
-        return {"period": "—", "summary": "⚠️ Finansal tablo bulunamadı."}
-
-    # --- En son dönemi bul ---
-    period_col = "Period" if "Period" in df.columns else (
-        "period" if "period" in df.columns else None
-    )
-    if period_col:
-        last_period = sorted(df[period_col].dropna().unique())[-1]
-        period_text = str(last_period)
-        dfl = df[df[period_col] == last_period].copy()
-    else:
-        period_text = "Son dönem"
-        dfl = df.copy()
-
-    # Yardımcı fonksiyon
-    def pick(patterns):
-        name_col = "Kalem" if "Kalem" in dfl.columns else "item"
-        if name_col not in dfl.columns:
-            return None
-        import re
-        mask = False
-        for p in patterns:
-            mask = mask | dfl[name_col].str.contains(p, case=False, regex=True, na=False)
-        sub = dfl[mask]
-        if sub.empty:
-            return None
-        val_col = "Value" if "Value" in dfl.columns else (
-            "value" if "value" in dfl.columns else dfl.columns[-1]
+    # --- 2️⃣ Google News + AI ---
+    try:
+        news_url = f"https://news.google.com/rss/search?q={symbol}+bilanço+OR+finansal+sonuçlar&hl=tr&gl=TR&ceid=TR:tr"
+        r = requests.get(news_url, timeout=10)
+        root = ET.fromstring(r.text)
+        items = root.findall(".//item")[:3]
+        if not items:
+            return {"period": "—", "summary": "⚠️ Bilanço bilgisi bulunamadı."}
+        headlines = "\n".join([i.findtext("title") for i in items if i.findtext("title")])
+        if not api_key:
+            return {"period": "—", "summary": headlines}
+        prompt = (
+            f"Aşağıda {symbol} hissesiyle ilgili bilanço haber başlıkları bulunuyor:\n"
+            f"{headlines}\n\n"
+            "Bu haberlerden yola çıkarak 2-3 cümlelik kısa Türkçe özet yaz. "
+            "Net kâr, ciro, kâr marjı gibi verileri tahmin et; yatırım tavsiyesi verme."
         )
-        val = sub.iloc[0][val_col]
-        try:
-            return float(str(val).replace(".", "").replace(",", "."))
-        except:
-            return None
-
-    # --- Ana kalemleri seç ---
-    net_kar = pick([r"net.*k[âa]r", r"dönem k[âa]r"])
-    ciro = pick([r"sat[iı]ş", r"hasılat", r"ciro"])
-    ozsermaye = pick([r"özkaynak", r"ozsermay"])
-    borc = pick([r"toplam bor[cç]", r"y[uü]k[uü]ml[uü]l[uü]k"])
-
-    # --- Oran hesapla ---
-    borc_orani = (borc / ozsermaye * 100) if (borc and ozsermaye) else None
-    kar_marji = (net_kar / ciro * 100) if (net_kar and ciro) else None
-
-    return {
-        "period": period_text,
-        "net_kar": net_kar,
-        "ciro": ciro,
-        "ozsermaye": ozsermaye,
-        "borc_orani": borc_orani,
-        "kar_marji": kar_marji,
-        "source": "İş Yatırım (isyatirimhisse)"
-    }
+        resp = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": "gpt-4o-mini",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 180,
+                "temperature": 0.6,
+            },
+            timeout=20,
+        )
+        if resp.status_code != 200:
+            print("AI fallback hata:", resp.text, flush=True)
+            return {"period": "—", "summary": headlines}
+        msg = (resp.json().get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
+        return {"period": "🧠 AI Haber Özet", "summary": msg, "source": "Google News + AI"}
+    except Exception as e:
+        print("AI fallback hata:", e, flush=True)
+        return {"period": "—", "summary": "⚠️ Hiçbir kaynakta bilanço verisi bulunamadı.", "source": None}
 
 # =============== MESAJ OLUŞTURMA ===============
 def build_message(symbol):
@@ -325,74 +254,44 @@ def build_message(symbol):
     tech = get_tv_analysis(symbol)
     lines = [f"💹 <b>{symbol}</b> Hisse Özeti (BIST100)"]
 
-    # --- Fiyat & temel bilgiler ---
+    # --- Fiyat & Temel ---
     if info:
-        if info.get("fiyat") is not None:
+        if info.get("fiyat"):
             lines.append(f"💰 Fiyat: {info['fiyat']} TL")
-        if info.get("degisim") and info["degisim"] != "0.00%":
-            lines.append(f"🧮 Değişim: {info['degisim']}")
-        satir = []
-        if info.get("acilis") is not None:
-            satir.append(f"Açılış: {info['acilis']}")
-        if info.get("kapanis") is not None:
-            satir.append(f"Kapanış: {info['kapanis']}")
-        if satir:
-            lines.append("📊 " + " | ".join(satir))
-        satir = []
-        if info.get("tavan") is not None:
-            satir.append(f"🔼 Tavan: {info['tavan']}")
-        if info.get("taban") is not None:
-            satir.append(f"🔽 Taban: {info['taban']}")
-        if satir:
-            lines.append(" | ".join(satir))
-        if info.get("hacim"):
-            lines.append(f"💸 Hacim: {info['hacim']}")
+        if info.get("degisim") != "0.00%":
+            lines.append(f"📈 Günlük Değişim: {info['degisim']}")
         if info.get("piyasa"):
             lines.append(f"🏢 Piyasa Değeri: {info['piyasa']}")
-        fkpddd = []
-        if info.get("fk") is not None:
-            fkpddd.append(f"📗 F/K: {info['fk']}")
-        if info.get("pddd") is not None:
-            fkpddd.append(f"📘 PD/DD: {info['pddd']}")
-        if fkpddd:
-            lines.append(" | ".join(fkpddd))
+        if info.get("fk") or info.get("pddd"):
+            fkpd = []
+            if info.get("fk"): fkpd.append(f"📗 F/K: {info['fk']}")
+            if info.get("pddd"): fkpd.append(f"📘 PD/DD: {info['pddd']}")
+            lines.append(" | ".join(fkpd))
 
     # --- Teknik Analiz ---
-    if tech and (tech.get("rsi") is not None or (tech.get("ema50") and tech.get("ema200"))):
+    if tech:
         rsi_val = tech.get("rsi")
         ema50 = tech.get("ema50")
         ema200 = tech.get("ema200")
-
         rsi_label = map_rsi_label(rsi_val)
         ema_sig = map_ema_signal(ema50, ema200)
         overall = combine_recommendation(ema_sig, rsi_label)
-
-        parts = [
-            f"⚡ RSI(G): {round(float(rsi_val),2) if rsi_val else '—'} ({rsi_label})",
-            f"🔄 EMA(G): {ema_sig}",
-            f"🤖 <b>Kriptos AI:</b> {overall}"
-        ]
-        lines.append("\n\n📊 <b>Teknik Analiz Sonuçları</b>\n" + "\n".join(parts))
+        lines.append("\n\n📊 <b>Teknik Analiz</b>")
+        lines.append(f"⚡ RSI: {rsi_val} ({rsi_label})")
+        lines.append(f"🔄 EMA(50/200): {ema_sig}")
+        lines.append(f"🤖 Kriptos AI: {overall}")
     else:
-        lines.append("\n\n📊 Teknik analiz alınamadı.")
+        lines.append("\n\n📊 Teknik analiz verisi alınamadı.")
 
-    # --- Temel Finansal Veriler (Bilanço Özeti) ---
+    # --- Bilanço Özeti ---
     fin = get_balance_summary(symbol)
     if fin:
         lines.append("\n\n🏦 <b>Bilanço Özeti</b>")
-        lines.append(f"📅 Dönem: {fin['period']}")
-        if fin.get('net_kar'):
-            lines.append(f"💰 Net Kâr: {round(fin['net_kar']/1e9,2)} milyar TL")
-        if fin.get('ciro'):
-            lines.append(f"💵 Ciro: {round(fin['ciro']/1e9,2)} milyar TL")
-        if fin.get('ozsermaye'):
-            lines.append(f"🏢 Özsermaye: {round(fin['ozsermaye']/1e9,2)} milyar TL")
-        if fin.get('borc_orani'):
-            lines.append(f"📊 Borç/Özsermaye: %{round(fin['borc_orani'],1)}")
-        if fin.get('kar_marji'):
-            lines.append(f"📈 Kâr Marjı: %{round(fin['kar_marji'],1)}")
+        lines.append(f"📅 Dönem: {fin.get('period', '-')}")
+        if fin.get("summary"):
+            lines.append(f"🧾 {fin['summary']}")
 
-    # --- Haberler (tek çekim) ---
+    # --- Haberler ---
     news_text = get_news(symbol)
     lines.append("\n\n" + news_text)
 
@@ -400,18 +299,16 @@ def build_message(symbol):
     ai_comment = analyze_news_with_ai(news_text)
     lines.append("\n" + ai_comment)
 
-    # --- Kaynak ---
+    # --- Kaynak & Görüş ---
     if info and info.get("url"):
         lines.append(f"\n\n📎 <a href='{info['url']}'>Kaynak: Yahoo Finance</a>")
-
-    # --- Görüş / İletişim ---
     lines.append("\n\n<b>💬 Görüş & Öneri:</b> @kriptosbtc")
 
     return "\n".join(lines)
 
-# =============== ANA DÖNGÜ (tek mesaj garantisi) ===============
+# =============== ANA DÖNGÜ ===============
 def main():
-    print("🚀 Borsa İstanbul Botu çalışıyor...", flush=True)
+    print("🚀 Kriptos Borsa Botu aktif!", flush=True)
     last_update_id = None
     processed = set()
     while True:
@@ -436,13 +333,10 @@ def main():
             if text.lower() == "/start":
                 msg = (
                     "👋 <b>Kriptos BIST100 Takip Botu'na Hoş Geldin!</b>\n\n"
-                    "💬 Sadece hisse kodunu (örnek: ASELS, THYAO...) yazın.\n\n"
-                    "💡  Algoritmamız fiyat, güncel haberler, hacim vb. bilgileri iletir.\n\n"
-                    "🤖 Yapay zeka destekli algoritmamız RSI ve EMA indikatör analizleri yapar ve (al-sat-vb.) önermeler üretir.\n\n"
-                    "⚙️ Veriler: TradingView & Yahoo Finance'den sağlanmaktadır.\n\n"
-                    "❗️  UYARI: Bilgiler kesinlikle YATIRIM TAVSİYESİ kapsamında değildir!\n\n"
-                    "📊 Komut örneği: <b>ASELS/asels</b>\n\n"
-                    "📩 Sorun veya öneriler için @kriptosbtc ile iletişime geçebilirsiniz."
+                    "💬 Hisse kodunu (örnek: ASELS, THYAO) yaz.\n"
+                    "📈 Fiyat, RSI, EMA, bilanço ve haber özetlerini getiririm.\n\n"
+                    "🤖 Yapay zeka bilanço & haber özetlerini oluşturur.\n"
+                    "⚙️ Kaynaklar: TradingView, KAP, Google News, OpenAI, Yahoo Finance."
                 )
                 send_message(chat_id, msg)
                 continue
@@ -455,6 +349,7 @@ def main():
             processed = set(list(processed)[-1500:])
         time.sleep(0.5)
 
+# =============== FLASK (Render Portu) ===============
 app = Flask(__name__)
 @app.route('/')
 def home():
