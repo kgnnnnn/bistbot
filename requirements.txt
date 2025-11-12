@@ -2,12 +2,4 @@ flask
 requests
 openai>=1.3.0
 yfinance
-beautifulsoup4
-html5lib
-pandas
-lxml
-PyPDF2
-xmltodict
-feedparser
-urllib3
 gunicorn
