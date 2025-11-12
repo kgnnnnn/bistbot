@@ -198,17 +198,14 @@ def combine_recommendation(ema_sig, rsi_label):
     return "NÖTR"
 
 
-# ==== BILANÇO ÖZETİ: Sıkı ve Çok-Kaynaklı Haber Tabanlı Çıkarım ====
-# Bu blok, mevcut get_balance_summary(symbol) fonksiyonunun yerini alır.
+# ==== BILANÇO ÖZETİ: Sadece 2025 ve Aktif Çeyrek Odaklı ====
 
 import re, html, time, random, requests, xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from urllib.parse import quote
 
-# ——— Yapılandırma ———
 BAL_NEWS_DOMAINS = [
     "kap.org.tr",
-    "fintables.com",
     "bloomberght.com",
     "dunya.com",
     "borsagundem.com",
@@ -235,11 +232,10 @@ FIN_KEYWORDS_NEAR = {
     "ebitda":     ["ebitda"],
 }
 
-# haberin kabul edilmesi için bu kelimelerden en az biri başlık veya içerikte geçmeli
 FIN_KEYWORDS_REQUIRED = [
     "bilanço", "bilanco", "finansal sonuç", "finansal sonuçlar", "finansal", "faaliyet raporu",
-    "net kâr", "net kar", "ciro", "gelir", "zarar", "özsermaye", "özkaynak", "borç",
-    "ebitda", "çeyrek", "dönemsel sonuç", "3. çeyrek", "4. çeyrek"
+    "net kâr", "net kar", "ciro", "gelir", "zarar", "özsermaye", "özkaynak", "borç", "ebitda",
+    "çeyrek", "quarter", "Q1", "Q2", "Q3", "Q4", "yarıyıl", "9 aylık", "6 aylık", "dokuz aylık", "3 aylık"
 ]
 
 NEARBY_WINDOW = 120
@@ -267,21 +263,6 @@ def _safe_get(url: str) -> str:
         return txt[:600_000] if len(txt) > 600_000 else txt
     except Exception:
         return ""
-
-def _contains_2025_in_any(title: str, url: str, html_text: str) -> bool:
-    return any("2025" in s for s in [title or "", url or "", html_text or ""])
-
-def _within_last_100_days(pub: str) -> bool:
-    if not pub:
-        return True
-    try:
-        try:
-            dt = datetime.strptime(pub, "%a, %d %b %Y %H:%M:%S %z").replace(tzinfo=None)
-        except Exception:
-            dt = datetime.strptime(pub.split("+")[0].strip(), "%a, %d %b %Y %H:%M:%S").replace(tzinfo=None)
-        return dt >= (datetime.now() - timedelta(days=100))
-    except Exception:
-        return True
 
 def _normalize_number(text):
     if not text:
@@ -319,9 +300,38 @@ def _extract_numbers_near_keywords(text, keywords_map):
                         res[field].append(norm)
     return res
 
-def _has_required_fin_keyword(title: str, html_text: str) -> bool:
-    low = (title + " " + html_text).lower()
-    return any(k in low for k in FIN_KEYWORDS_REQUIRED)
+def _contains_valid_2025_quarter(title: str, url: str, html_text: str) -> bool:
+    """Sadece 2025 ve aktif çeyreğe göre bir önceki döneme ait haberleri kabul eder."""
+    content = (title + " " + url + " " + html_text).lower()
+    if "2025" not in content:
+        return False
+
+    # finansal kelimeler zorunlu
+    fin_kw = ["bilanço","bilanco","finansal sonuç","net kâr","net kar","ciro","gelir","faaliyet raporu"]
+    if not any(k in content for k in fin_kw):
+        return False
+
+    # aktif çeyrek hesapla (bir önceki dönemi al)
+    month = datetime.now().month
+    if month <= 3:
+        aktif = ["4. çeyrek", "q4", "dördüncü çeyrek", "yıl sonu", "12 aylık"]
+    elif month <= 6:
+        aktif = ["1. çeyrek", "q1", "ilk çeyrek", "birinci çeyrek", "3 aylık"]
+    elif month <= 9:
+        aktif = ["2. çeyrek", "q2", "ikinci çeyrek", "6 aylık", "yarıyıl"]
+    else:
+        aktif = ["3. çeyrek", "q3", "üçüncü çeyrek", "9 aylık", "dokuz aylık", "9a25", "9a2025"]
+
+    # aktif dönem varsa kabul et
+    if not any(a in content for a in aktif):
+        return False
+
+    # eski çeyrekleri at
+    eski = ["1. çeyrek", "q1", "2. çeyrek", "q2", "ilk çeyrek", "ikinci çeyrek"]
+    if any(e in content for e in eski if e not in aktif):
+        return False
+
+    return True
 
 def _belongs_to_symbol(symbol: str, title: str, url: str, html_text: str) -> bool:
     s = (symbol or "").upper()
@@ -337,7 +347,7 @@ def _belongs_to_symbol(symbol: str, title: str, url: str, html_text: str) -> boo
 
 def _fetch_gnews_items(symbol: str, domain: str):
     ts = int(time.time() * 1000)
-    query = f'{symbol} ("bilanço" OR "net kâr" OR "net kar" OR "ciro" OR "gelir" OR "zarar" OR "finansal sonuç" OR "faaliyet raporu" OR "çeyrek") site:{domain}'
+    query = f'{symbol} ("bilanço" OR "net kâr" OR "net kar" OR "ciro" OR "gelir" OR "zarar" OR "finansal sonuç" OR "faaliyet raporu" OR "çeyrek" OR "Q3" OR "Q4") site:{domain}'
     url = f"https://news.google.com/rss/search?q={quote(query)}&hl=tr&gl=TR&ceid=TR:tr&t={ts}&nocache={random.randint(10000,9999999)}"
     try:
         r = requests.get(url, timeout=12)
@@ -367,16 +377,11 @@ def _format_human(val):
     return f"{int(v) if v.is_integer() else v} TL"
 
 def get_balance_summary(symbol: str):
-    """
-    Çok-kaynaklı finans haberlerinden (Google News + site:domain) 
-    2025 veya son 100g filtresiyle
-    net kâr/ciro/borç/özsermaye/EBITDA değerlerini çıkarmaya çalışır.
-    """
+    """Sadece 2025 ve bir önceki çeyrek finansal haberlerini analiz eder."""
     sym = (symbol or "").strip().upper()
     if not sym:
         return {"summary": "📄 Geçersiz hisse kodu."}
 
-    # 1️⃣ Haber adaylarını topla
     domains = list(BAL_NEWS_DOMAINS)
     random.shuffle(domains)
     candidates = []
@@ -387,7 +392,6 @@ def get_balance_summary(symbol: str):
         if len(candidates) > 100:
             break
 
-    # 2️⃣ Filtrele + HTML analiz
     picked = []
     for it in candidates:
         title, link, pub = it["title"], it["link"], it["pub"]
@@ -398,12 +402,7 @@ def get_balance_summary(symbol: str):
         if not html_text:
             continue
 
-        has_2025 = _contains_2025_in_any(title, link, html_text)
-        recent = _within_last_100_days(pub)
-        if not has_2025 and not recent:
-            continue
-
-        if not _has_required_fin_keyword(title, html_text):
+        if not _contains_valid_2025_quarter(title, link, html_text):
             continue
 
         if not _belongs_to_symbol(sym, title, link, html_text):
@@ -413,24 +412,16 @@ def get_balance_summary(symbol: str):
         numbers = _extract_numbers_near_keywords(plain, FIN_KEYWORDS_NEAR)
 
         picked.append({
-            "title": title,
-            "link": link,
-            "pub": pub,
-            "domain": it["domain"],
-            "numbers": numbers,
-            "priority": (1 if has_2025 else 0)
+            "title": title, "link": link, "pub": pub, "domain": it["domain"], "numbers": numbers
         })
 
         if len(picked) >= 5:
             break
 
     if not picked:
-        return {"summary": "📰 Son 100 günde güncel finansal haber bulunamadı."}
+        return {"summary": "📰 2025 yılına ait güncel bilanço haberi bulunamadı."}
 
-    # 3️⃣ 2025 geçenleri öncele
-    picked.sort(key=lambda x: x["priority"], reverse=True)
-
-    # 4️⃣ alan bazında değer seçimi
+    # alan bazında değer seçimi
     agg = {k: [] for k in FIN_KEYWORDS_NEAR}
     for p in picked:
         for fld, vals in p["numbers"].items():
@@ -448,7 +439,6 @@ def get_balance_summary(symbol: str):
         best_key = max(counts.items(), key=lambda x: (x[1], x[0]))[0]
         final[fld] = best_key
 
-    # 5️⃣ insan okunur özet
     parts = []
     if final.get("net_income") is not None:
         parts.append(f"💸 Net kâr: {_format_human(final['net_income'])}")
@@ -461,10 +451,9 @@ def get_balance_summary(symbol: str):
     if final.get("debt") is not None:
         parts.append(f"💳 Toplam Borç: {_format_human(final['debt'])}")
 
-    summary = "📰 Haberlerden net bilanço rakamı seçilemedi." if not parts else \
-               "🤖 <b>Bilanço Özeti (haber tabanlı)</b>\n" + "\n".join(parts)
+    summary = "📰 2025 {aktif dönem} haberlerinden net rakam çıkarılamadı." if not parts else \
+              "🤖 <b>Bilanço Özeti (2025 Güncel Çeyrek)</b>\n" + "\n".join(parts)
 
-    # 6️⃣ kaynaklar
     lines = [summary, "\n🔗 <b>Kaynaklar</b>"]
     for p in picked[:3]:
         pub = p["pub"].split("+")[0].strip() if p["pub"] else ""
