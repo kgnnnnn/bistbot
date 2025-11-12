@@ -10,6 +10,7 @@ from flask import Flask
 from threading import Thread
 from PyPDF2 import PdfReader
 import openai
+import xml.etree.ElementTree as ET
 
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -55,25 +56,38 @@ def format_number(num):
 
 
 # =============== HABERLER (Google RSS) ===============
+import xml.etree.ElementTree as ET
+
 def get_news(symbol):
+    """Google News RSS üzerinden hisseye ait son 3 haberi döndürür."""
     try:
         url = f"https://news.google.com/rss/search?q={symbol}+Borsa+İstanbul+OR+hisse&hl=tr&gl=TR&ceid=TR:tr"
-        r = requests.get(url, timeout=8)
+        r = requests.get(url, timeout=10)
         if r.status_code != 200:
             return "📰 Haberler alınamadı."
-        root = ET.fromstring(r.text)
+
+        # XML parse fix
+        xml_data = r.text.encode("utf-8", "ignore").decode("utf-8", "ignore")
+        xml_data = xml_data.replace("&", "&amp;")
+
+        root = ET.fromstring(xml_data)
         items = root.findall(".//item")[:3]
         if not items:
             return "📰 Lütfen hisse kodunu doğru giriniz. (Örn: ASELS)"
+
         haberler = ["🗞️ <b>Son Haberler</b>"]
         for item in items:
-            title = item.find("title").text
-            link = item.find("link").text
-            haberler.append(f"🔹 <a href='{link}'>{title}</a>")
+            title = (item.find("title").text or "").strip()
+            link = (item.find("link").text or "").strip()
+            pub = (item.find("pubDate").text or "").split("+")[0].strip() if item.find("pubDate") is not None else ""
+            haberler.append(f"🔹 <a href='{link}'>{title}</a> ({pub})")
+
         return "\n".join(haberler)
+
     except Exception as e:
-        print("News error:", e, flush=True)
+        print("get_news hata:", e, flush=True)
         return "📰 Haberler alınamadı."
+
 
 
 # =============== HABER ANALİZİ (OpenAI - Kriptos AI) ===============
@@ -170,23 +184,21 @@ def combine_recommendation(ema_sig, rsi_label):
         return "SATIŞ"
     return "NÖTR"
 
-
-# =============== KAP PDF + AI BİLANÇO ===============
-import feedparser
-from io import BytesIO
-from PyPDF2 import PdfReader
+# =============== KAP PDF + AI BİLANÇO (STABLE) ===============
 
 def extract_pdf_text(pdf_url):
     """KAP PDF içeriğini indirip ilk 2 sayfasını metne çevirir."""
     try:
         r = requests.get(pdf_url, timeout=15)
         if r.status_code != 200 or not r.content:
+            print(f"⚠️ PDF indirilemedi: {pdf_url}", flush=True)
             return ""
         pdf = BytesIO(r.content)
         reader = PdfReader(pdf)
         text = ""
         for page in reader.pages[:2]:
-            text += (page.extract_text() or "") + "\n"
+            page_text = page.extract_text() or ""
+            text += page_text + "\n"
         return text[:4000]
     except Exception as e:
         print("PDF okuma hata:", e, flush=True)
@@ -195,52 +207,76 @@ def extract_pdf_text(pdf_url):
 
 def get_balance_summary(symbol):
     """KAP RSS üzerinden PDF raporlarını bulur ve AI bilanço özetini döner."""
-    symbol = symbol.upper()
+    symbol = symbol.upper().strip()
     api_key = os.getenv("OPENAI_API_KEY")
-    try:
-        feed = feedparser.parse("https://www.kap.org.tr/tr/RssFeed/All")
 
+    try:
+        # --- RSS feedini oku ---
+        feed = feedparser.parse("https://www.kap.org.tr/tr/RssFeed/All")
+        if not feed.entries:
+            print("⚠️ KAP RSS boş geldi", flush=True)
+            return {"summary": "⚠️ KAP RSS boş geldi veya erişilemedi."}
+
+        # --- İlgili PDF bildirimi bul ---
         for entry in feed.entries[:400]:
             title = (entry.title or "").upper()
-            link = entry.link or ""
+            link = (entry.link or "").strip()
             if not title or not link:
                 continue
 
-            if symbol in title and any(x in title for x in ["FİNANSAL", "BİLANÇO", "MALİ TABLO", "UFRS"]):
+            # Finansal içerikli bildirimi bul
+            if symbol in title and any(word in title for word in ["FİNANSAL", "BİLANÇO", "MALİ TABLO", "UFRS"]):
                 pdf_url = link.replace("/tr/Bildirim/", "/tr/BildirimPdf/")
                 if not pdf_url.endswith(".pdf"):
                     pdf_url += ".pdf"
 
+                print(f"📎 PDF bulundu: {pdf_url}", flush=True)
+
+                # PDF'i indirip ilk sayfaları oku
                 text = extract_pdf_text(pdf_url)
                 if not text.strip():
-                    return {"summary": f"⚠️ PDF okunamadı: <a href='{pdf_url}'>KAP PDF</a>"}
+                    return {"summary": f"⚠️ PDF metni okunamadı: <a href='{pdf_url}'>KAP PDF</a>"}
 
+                # --- AI özet oluştur ---
                 prompt = f"""
-Aşağıda {symbol} hissesinin KAP'ta yayımlanmış finansal raporu yer alıyor.
-Bu metni analiz et ve 3-4 cümlelik kısa bir Türkçe bilanço özeti yaz.
-Net kâr, ciro, borç/özsermaye gibi detayları belirt ama yatırım tavsiyesi verme.
+Aşağıda {symbol} hissesinin KAP'ta yayımlanmış finansal rapor metni yer alıyor.
+Bu metni analiz et ve 3-4 cümlelik sade bir Türkçe bilanço özeti yaz.
+Net kâr, ciro, borç/özsermaye, marj gibi finansal noktalara değin ama yatırım tavsiyesi verme.
 
 {text[:3500]}
 """
+
                 r = requests.post(
                     "https://api.openai.com/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
                     json={
                         "model": "gpt-4o-mini",
                         "messages": [{"role": "user", "content": prompt}],
-                        "max_tokens": 200,
+                        "max_tokens": 220,
                         "temperature": 0.5,
                     },
-                    timeout=25,
+                    timeout=30,
                 )
+
+                if r.status_code != 200:
+                    print("⚠️ OpenAI yanıt hatası:", r.text, flush=True)
+                    return {"summary": f"📎 <a href='{pdf_url}'>KAP PDF</a>\n⚠️ AI özet alınamadı."}
+
                 msg = (r.json().get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
+                msg = msg or "⚠️ AI özet oluşturulamadı."
                 return {"summary": f"📎 <a href='{pdf_url}'>KAP PDF</a>\n🧾 {msg}"}
 
-        return {"summary": "⚠️ KAP'ta finansal rapor bulunamadı."}
+        # Hiç uygun PDF bulunmadıysa:
+        return {"summary": "⚠️ KAP'ta ilgili finansal rapor bulunamadı."}
 
     except Exception as e:
         print("get_balance_summary hata:", e, flush=True)
         return {"summary": "⚠️ Bilanço verisi alınamadı."}
+
+
 
 ## MESAJ OLUŞTURM A###
 def build_message(symbol):
