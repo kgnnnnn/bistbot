@@ -109,8 +109,9 @@ def analyze_news_with_ai(news_text):
         print("AI yorum hatası:", e, flush=True)
         return "⚠️ AI yorum alınamadı."
 
-# =============== FİYAT VERİSİ (YAHOO) ===============
+# =============== YAHOO FİYAT (Temel Veriler) ===============
 def get_price(symbol):
+    """YF rate-limit olursa sessizce None döner; sadece fiyat-temel bilgileri döner."""
     try:
         time.sleep(random.uniform(0.3, 0.6))
         ticker = yf.Ticker(symbol.upper() + ".IS")
@@ -126,12 +127,11 @@ def get_price(symbol):
             "tavan": info.get("dayHigh"),
             "taban": info.get("dayLow"),
             "hacim": format_number(info.get("volume")),
-            "fk": info.get("trailingPE"),
-            "pddd": info.get("priceToBook"),
             "piyasa": format_number(info.get("marketCap")),
         }
     except Exception:
         return None
+
 
 # =============== TRADINGVIEW (RSI, EMA50/200) ===============
 TV_URL = "https://tradingview-real-time.p.rapidapi.com/technicals/summary"
@@ -262,13 +262,6 @@ def build_message(symbol):
             lines.append(f"📈 Günlük Değişim: {info['degisim']}")
         if info.get("piyasa"):
             lines.append(f"🏢 Piyasa Değeri: {info['piyasa']}")
-        if info.get("fk") or info.get("pddd"):
-            fkpd = []
-            if info.get("fk"):
-                fkpd.append(f"📗 F/K: {info['fk']}")
-            if info.get("pddd"):
-                fkpd.append(f"📘 PD/DD: {info['pddd']}")
-            lines.append(" | ".join(fkpd))
 
     # --- Teknik Analiz ---
     if tech:
@@ -302,10 +295,11 @@ def build_message(symbol):
     ai_comment = analyze_news_with_ai(news_text)
     lines.append("\n" + ai_comment)
 
-    # --- Kaynak & Görüş ---
+    # --- Görüş & Öneri ---
     lines.append("\n\n<b>💬 Görüş & Öneri:</b> @kriptosbtc")
 
     return "\n".join(lines)
+
 
 
 # =============== ANA DÖNGÜ ===============
