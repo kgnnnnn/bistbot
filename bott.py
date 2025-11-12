@@ -188,13 +188,13 @@ def combine_recommendation(ema_sig, rsi_label):
         return "SATIŞ"
     return "NÖTR"
 
-# =============== BİLANÇO (Akıllı Tarih Filtresi + Paralel Web Tarama) ===============
+# =============== BİLANÇO (Son 90 Gün + Akıllı Yıl Filtresi + Stabil) ===============
 from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 
 def get_balance_summary(symbol):
-    """Son 60 gün içindeki bilanço haberlerini webden tarar, güncel olanı özetler."""
+    """Son 90 gün içindeki en güncel bilanço haberini bulur ve özetler."""
     symbol = symbol.upper().strip()
     api_key = os.getenv("OPENAI_API_KEY")
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
@@ -206,22 +206,18 @@ def get_balance_summary(symbol):
         f"https://www.borsagundem.com/arama/{symbol}+bilanço",
         f"https://www.dunya.com/arama?query={symbol}+bilanço",
         f"https://m.bloomberght.com/arama?q={symbol}+bilanço",
-        f"https://www.borsahatti.com/?s={symbol}+bilanço",
-        f"https://www.finansanlik.com/?s={symbol}+bilanço",
-        f"https://www.borsagazetesi.com/?s={symbol}+bilanço",
-        f"https://www.finans365.com/?s={symbol}+bilanço",
-        f"https://tr.investing.com/search/?q={symbol}+bilanço",
-        f"https://www.finanswebde.com/search?q={symbol}+bilanço",
         f"https://www.ekonomim.com/arama?query={symbol}+bilanço",
+        f"https://tr.investing.com/search/?q={symbol}+bilanço",
         f"https://www.bigpara.com/arama/{symbol}+bilanço",
-        f"https://www.finansmanevi.com/?s={symbol}+bilanço",
+        f"https://www.finanswebde.com/search?q={symbol}+bilanço",
     ]
 
     keywords = ["bilanço", "kâr", "zarar", "gelir", "ciro", "faaliyet"]
     all_text = ""
-    cutoff_date = datetime.now() - timedelta(days=60)
+    cutoff_date = datetime.now() - timedelta(days=90)
 
     def fetch_source(url):
+        """Tek kaynaktan uygun içeriği getirir."""
         try:
             r = requests.get(url, headers=headers, timeout=10)
             if r.status_code != 200:
@@ -229,7 +225,7 @@ def get_balance_summary(symbol):
             soup = BeautifulSoup(r.text, "html.parser")
             links = [a.get("href") for a in soup.find_all("a", href=True)
                      if any(k in a.get_text().lower() for k in keywords)]
-            links = list(dict.fromkeys(links))[:3]
+            links = list(dict.fromkeys(links))[:2]  # sadece ilk 2 link denensin
             content_found = ""
 
             for link in links:
@@ -237,12 +233,17 @@ def get_balance_summary(symbol):
                     if not link.startswith("http"):
                         base = re.match(r"https?://[^/]+", url).group(0)
                         link = base + link
+
                     sub = requests.get(link, headers=headers, timeout=10)
+                    if sub.status_code != 200:
+                        continue
                     sub_soup = BeautifulSoup(sub.text, "html.parser")
 
-                    # Tarih yakala (örnek: 12 Kasım 2025)
-                    date_text = " ".join([t.get_text(" ", strip=True) for t in sub_soup.find_all(["time", "span", "p"]) if any(y in t.get_text() for y in ["2025", "2026"])])
-                    if "2023" in date_text or "2024" in date_text:
+                    # --- Yıl filtrelemesi (2025-2026 geçmeli, 2023-2024 yasak) ---
+                    text_all = sub_soup.get_text(" ", strip=True)
+                    if any(y in text_all for y in ["2023", "2024"]):
+                        continue
+                    if not any(y in text_all for y in ["2025", "2026"]):
                         continue
 
                     paragraphs = [p.get_text(" ", strip=True)
@@ -250,77 +251,98 @@ def get_balance_summary(symbol):
                                   if len(p.get_text(strip=True)) > 80]
                     content = " ".join(paragraphs)
                     content = re.sub(r"\s+", " ", content)
-                    if len(content) > 300 and any(k in content.lower() for k in keywords):
+
+                    # İçerikte bilanço, hisse adı ve finansal terim olmalı
+                    if (symbol.lower() in content.lower()
+                        and any(k in content.lower() for k in keywords)
+                        and "bilanço" in content.lower()
+                        and len(content) > 300):
+                        print(f"✅ Güncel bilanço bulundu: {link}", flush=True)
                         content_found += f"\n\nKaynak: {link}\n{content}"
                         break
-                except Exception as e:
-                    print("Alt link hata:", e, flush=True)
+                except Exception:
                     continue
             return content_found
-        except Exception as e:
-            print("Kaynak hata:", e, flush=True)
+        except Exception:
             return ""
 
-    # Paralel tarama
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    # Paralel tarama (stabil)
+    with ThreadPoolExecutor(max_workers=3) as executor:
         results = list(executor.map(fetch_source, sources))
     all_text = "\n".join([r for r in results if r.strip()])
 
-    # Fallback - Google News (sadece son 2 ay)
+    # --- Fallback: Google News (after: filtreli) ---
     if not all_text.strip():
-        after_date = (datetime.now() - timedelta(days=60)).strftime("%Y-%m-%d")
+        after_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
         rss_url = f"https://news.google.com/rss/search?q={symbol}+bilanço+after:{after_date}&hl=tr&gl=TR&ceid=TR:tr"
         print("⚠️ Google News fallback:", rss_url, flush=True)
-        r = requests.get(rss_url, headers=headers, timeout=10)
-        soup = BeautifulSoup(r.text, "xml")
-        items = soup.find_all("item")[:3]
-        for it in items:
-            title = it.title.text
-            link = it.link.text
-            if "bilanço" not in title.lower():
-                continue
-            sub = requests.get(link, headers=headers, timeout=10)
-            sub_soup = BeautifulSoup(sub.text, "html.parser")
-            content = " ".join([p.get_text(" ", strip=True)
-                                for p in sub_soup.find_all("p") if len(p.get_text(strip=True)) > 80])
-            if len(content) > 200 and symbol.lower() in content.lower():
-                all_text += f"\n\nKaynak: {link}\n{content}"
-                break
+        try:
+            r = requests.get(rss_url, headers=headers, timeout=10)
+            soup = BeautifulSoup(r.text, "xml")
+            items = soup.find_all("item")[:3]
+            for it in items:
+                title = it.title.text
+                link = it.link.text
+                if "bilanço" not in title.lower():
+                    continue
+                sub = requests.get(link, headers=headers, timeout=10)
+                sub_soup = BeautifulSoup(sub.text, "html.parser")
+                text_all = sub_soup.get_text(" ", strip=True)
+                if any(y in text_all for y in ["2023", "2024"]):
+                    continue
+                paragraphs = [p.get_text(" ", strip=True)
+                              for p in sub_soup.find_all("p")
+                              if len(p.get_text(strip=True)) > 80]
+                content = " ".join(paragraphs)
+                if (len(content) > 200
+                    and "bilanço" in content.lower()
+                    and symbol.lower() in content.lower()):
+                    print(f"✅ Google News bilanço bulundu: {link}", flush=True)
+                    all_text += f"\n\nKaynak: {link}\n{content}"
+                    break
+        except Exception:
+            pass
 
     if not all_text.strip():
         return {"summary": "⚠️ Güncel bilanço haberi bulunamadı."}
 
     # --- OpenAI özet ---
     prompt = f"""
-Aşağıda {symbol} hissesine ait en güncel bilanço haber metinleri yer alıyor:
+Aşağıda {symbol} hissesine ait 2025 veya 2026 yılı bilanço haber metinleri yer alıyor:
 {all_text[:4000]}
 
-Bu içerikleri analiz et ve 3-4 cümlelik sade bir Türkçe bilanço özeti oluştur.
+Bu içeriklerden yararlanarak 3-4 cümlelik sade ve net bir bilanço özeti oluştur.
 Net kâr, ciro, borç/özsermaye gibi değişimlere değin.
 Yıl veya çeyrek bilgisi yalnızca güncelse belirt.
 Yatırım tavsiyesi verme.
 """
-    resp = requests.post(
-        "https://api.openai.com/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        },
-        json={
-            "model": "gpt-4o-mini",
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 230,
-            "temperature": 0.5,
-        },
-        timeout=40,
-    )
 
-    if resp.status_code != 200:
-        print("AI özet hata:", resp.text, flush=True)
+    try:
+        resp = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "gpt-4o-mini",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 230,
+                "temperature": 0.5,
+            },
+            timeout=40,
+        )
+
+        if resp.status_code != 200:
+            print("AI özet hata:", resp.text, flush=True)
+            return {"summary": "⚠️ AI bilanço özeti alınamadı."}
+
+        msg = (resp.json().get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
+        return {"summary": f"🧾 {msg}"}
+    except Exception as e:
+        print("AI özet hata:", e, flush=True)
         return {"summary": "⚠️ AI bilanço özeti alınamadı."}
 
-    msg = (resp.json().get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
-    return {"summary": f"🧾 {msg}"}
 
 ##-------------------------MESAJ OLUŞTURMA-------------------------##
 def build_message(symbol):
