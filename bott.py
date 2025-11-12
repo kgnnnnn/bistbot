@@ -5,6 +5,7 @@ import openai
 import xml.etree.ElementTree as ET
 from io import BytesIO
 from PyPDF2 import PdfReader
+import html, re
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 print("DEBUG OPENAI KEY:", openai.api_key[:10] if openai.api_key else "YOK", flush=True)
@@ -166,6 +167,7 @@ def get_tv_analysis(symbol):
         
 
 # =============== KAP PDF + AI BİLANÇO ===============
+
 def extract_pdf_text(pdf_url):
     """KAP PDF içeriğini indirip ilk 2 sayfasını metne çevirir."""
     try:
@@ -185,71 +187,81 @@ def extract_pdf_text(pdf_url):
         return ""
 
 def get_balance_summary(symbol):
-    """KAP RSS üzerinden PDF raporu bulur ve AI özetini döner."""
+    """KAP RSS üzerinden PDF raporu bulur, içeriği çözümler ve AI özetini döner."""
     symbol = symbol.upper()
     api_key = os.getenv("OPENAI_API_KEY")
+
     try:
         url = "https://www.kap.org.tr/tr/RssFeed/All"
         r = requests.get(url, timeout=15)
-        xml_data = r.text
+        xml_raw = r.text
 
-        # --- XML fix: hatalı karakterleri temizle ---
-        xml_data = xml_data.encode("utf-8", "ignore").decode("utf-8", "ignore")
-        xml_data = xml_data.replace("&", "&amp;")
+        # --- XML fix: geçersiz karakterleri temizle, HTML entity'leri aç ---
+        xml_clean = html.unescape(xml_raw)
+        xml_clean = re.sub(r"[^\x09\x0A\x0D\x20-\x7FğüşöçıİĞÜŞÖÇâêîôûÂÊÎÔÛ]", "", xml_clean)
 
-        root = ET.fromstring(xml_data)
-        items = root.findall(".//item")
+        # Sadece <item> bloklarını yakala
+        items_raw = re.findall(r"<item>(.*?)</item>", xml_clean, re.DOTALL)
+        if not items_raw:
+            return {"summary": "⚠️ KAP RSS boş veya çözümlenemedi."}
 
-        for it in items[:400]:  # ilk 400 kayıt içinde ara
-            title = (it.findtext("title") or "").upper()
-            link = it.findtext("link") or ""
-            if not link or not title:
-                continue
+        for item_raw in items_raw[:400]:
+            try:
+                title_match = re.search(r"<title>(.*?)</title>", item_raw, re.DOTALL)
+                link_match = re.search(r"<link>(.*?)</link>", item_raw, re.DOTALL)
+                title = html.unescape(title_match.group(1)).upper() if title_match else ""
+                link = html.unescape(link_match.group(1)) if link_match else ""
+                if not link or not title:
+                    continue
 
-            # Finansal raporları yakala
-            if symbol in title and any(x in title for x in ["FİNANSAL", "BİLANÇO", "MALİ TABLO", "UFRS"]):
-                # PDF linkini oluştur
-                pdf_url = link
-                if "/tr/Bildirim/" in link:
-                    pdf_url = link.replace("/tr/Bildirim/", "/tr/BildirimPdf/")
-                if not pdf_url.endswith(".pdf"):
-                    pdf_url += ".pdf"
+                # Finansal raporları yakala
+                if symbol in title and any(x in title for x in ["FİNANSAL", "BİLANÇO", "MALİ TABLO", "UFRS"]):
+                    pdf_url = link
+                    if "/tr/Bildirim/" in link:
+                        pdf_url = link.replace("/tr/Bildirim/", "/tr/BildirimPdf/")
+                    if not pdf_url.endswith(".pdf"):
+                        pdf_url += ".pdf"
 
-                text = extract_pdf_text(pdf_url)
-                if not text.strip():
-                    return {"summary": f"⚠️ PDF metni okunamadı: <a href='{pdf_url}'>KAP PDF</a>"}
+                    text = extract_pdf_text(pdf_url)
+                    if not text.strip():
+                        return {"summary": f"⚠️ PDF metni okunamadı: <a href='{pdf_url}'>KAP PDF</a>"}
 
-                # OpenAI özet isteği
-                prompt = f"""
+                    # OpenAI özet isteği
+                    prompt = f"""
 Aşağıda {symbol} hissesinin KAP'ta yayımlanmış finansal raporu yer alıyor.
 Metni incele ve 3-4 cümlelik kısa bir Türkçe bilanço özeti oluştur.
 Net kâr, ciro, borç/özsermaye gibi bilgileri belirt.
+Cümleleri akıcı biçimde bağla ve sonunu '...ve şirketin genel finansal görünümü bu şekilde tamamlanmıştır.' tarzında bitir.
 Yatırım tavsiyesi verme.
 
 {text[:3500]}
 """
-                resp = requests.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": "gpt-4o-mini",
-                        "messages": [{"role": "user", "content": prompt}],
-                        "max_tokens": 200,
-                        "temperature": 0.5,
-                    },
-                    timeout=25,
-                )
-                if resp.status_code != 200:
-                    print("AI özet hata:", resp.text, flush=True)
-                    return {"summary": f"📎 <a href='{pdf_url}'>KAP PDF</a>\n⚠️ AI özet alınamadı."}
+                    resp = requests.post(
+                        "https://api.openai.com/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {api_key}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "model": "gpt-4o-mini",
+                            "messages": [{"role": "user", "content": prompt}],
+                            "max_tokens": 200,
+                            "temperature": 0.5,
+                        },
+                        timeout=25,
+                    )
 
-                msg = (resp.json().get("choices") or [{}])[0].get("message", {}).get("content", "")
-                msg = msg.strip() if msg else "⚠️ Özet oluşturulamadı."
+                    if resp.status_code != 200:
+                        print("AI özet hata:", resp.text, flush=True)
+                        return {"summary": f"📎 <a href='{pdf_url}'>KAP PDF</a>\n⚠️ AI özet alınamadı."}
 
-                return {"summary": f"📎 <a href='{pdf_url}'>KAP PDF</a>\n🧾 {msg}"}
+                    msg = (resp.json().get("choices") or [{}])[0].get("message", {}).get("content", "")
+                    msg = msg.strip() if msg else "⚠️ Özet oluşturulamadı."
+
+                    return {"summary": f"📎 <a href='{pdf_url}'>KAP PDF</a>\n🧾 {msg}"}
+            except Exception as inner:
+                print("Item parse hata:", inner, flush=True)
+                continue
 
         return {"summary": "⚠️ KAP'ta finansal rapor bulunamadı."}
 
