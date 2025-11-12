@@ -12,6 +12,8 @@ from PyPDF2 import PdfReader
 import openai
 import xml.etree.ElementTree as ET
 import pandas as pd
+from bs4 import BeautifulSoup
+import html
 
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -185,83 +187,91 @@ def combine_recommendation(ema_sig, rsi_label):
         return "SATIŞ"
     return "NÖTR"
 
-# =============== BİLANÇO (Bigpara + OpenAI - Akıllı URL Sürümü) ===============
+# =============== BİLANÇO (Sadece Finansal Haberler + AI Özetleme) ===============
 
 def get_balance_summary(symbol):
     """
-    Bigpara bilanço sayfasından tabloyu çeker, AI ile kısa Türkçe özet üretir.
-    Örn: https://www.bigpara.com/finans/borsa/hisse-senedi/aselsan-asels/bilanco/
+    {symbol} hissesine dair SON BİLANÇO veya finansal sonuç haberlerini toplar.
+    Gereksiz haberleri filtreler, yalnızca bilanço odaklı haberleri OpenAI ile özetler.
     """
-    import pandas as pd
-
     symbol = symbol.upper().strip()
     api_key = os.getenv("OPENAI_API_KEY")
 
-    # Muhtemel URL varyasyonları
-    possible_urls = [
-        f"https://www.bigpara.com/finans/borsa/hisse-senedi/{symbol.lower()}-{symbol.lower()}/bilanco/",
-        f"https://www.bigpara.com/finans/borsa/hisse-senedi/{symbol.lower()}/bilanco/",
-        f"https://www.bigpara.com/finans/borsa/hisse-senedi/{symbol.lower()}-aselsan/bilanco/",
-        f"https://www.bigpara.com/finans/borsa/hisse-senedi/{symbol.lower()}-thy/bilanco/"
-    ]
+    try:
+        # --- 1️⃣ Google News Araması (çoklu kaynak) ---
+        query = (
+            f"{symbol} bilanço OR finansal sonuç OR net kar OR zarar OR gelir tablosu "
+            f"site:borsamatik.com.tr OR site:finansopia.com OR site:bigpara.com OR "
+            f"site:dunya.com OR site:midas.com.tr"
+        )
+        url = f"https://news.google.com/rss/search?q={requests.utils.quote(query)}&hl=tr&gl=TR&ceid=TR:tr"
+        r = requests.get(url, timeout=10)
+        soup = BeautifulSoup(r.text, "xml")
+        items = soup.find_all("item")[:5]  # en güncel 5 haber
+        if not items:
+            return {"summary": "⚠️ Güncel bilanço haberi bulunamadı."}
 
-    for url in possible_urls:
-        try:
-            print(f"📡 Bigpara isteği: {url}", flush=True)
-            tables = pd.read_html(url)
-            if tables and len(tables[0]) > 0:
-                df = tables[0]
-                break
-        except Exception as err:
-            print(f"⚠️ URL denemesi başarısız: {url} ({err})", flush=True)
-            df = None
+        # --- 2️⃣ Filtreleme (yalnızca finansal içerikli başlıklar) ---
+        finansal_kelimeler = ["bilanço", "finansal", "kâr", "zarar", "gelir tablosu", "faaliyet sonucu"]
+        filtered = []
+        for it in items:
+            title = it.title.text.lower()
+            if any(k in title for k in finansal_kelimeler):
+                filtered.append(it)
+        if not filtered:
+            return {"summary": "⚠️ Uygun finansal haber bulunamadı."}
 
-    if df is None or df.empty:
-        return {"summary": "⚠️ Bigpara bilanço verisi bulunamadı."}
+        # --- 3️⃣ İçerikleri Çekme ---
+        articles = []
+        for it in filtered[:3]:  # ilk 3 uygun haberi al
+            link = it.link.text.strip()
+            title = it.title.text.strip()
+            try:
+                page = requests.get(link, timeout=8)
+                psoup = BeautifulSoup(page.text, "html.parser")
+                paragraphs = " ".join(
+                    [p.get_text(strip=True) for p in psoup.find_all("p") if len(p.get_text(strip=True)) > 50]
+                )
+                if paragraphs:
+                    articles.append(f"{title}\n{paragraphs[:1200]}")
+            except Exception:
+                continue
 
-    # tabloyu temizle
-    df.columns = [str(c).strip() for c in df.columns]
-    df = df.dropna(how="all")
+        if not articles:
+            return {"summary": "⚠️ Haber metni alınamadı."}
 
-    # tabloyu metin haline getir
-    text = df.to_string(index=False)
-
-    # AI özet oluştur
-    prompt = f"""
-Aşağıda {symbol} hissesinin bilanço verileri yer alıyor:
+        # --- 4️⃣ OpenAI Özetleme ---
+        text = "\n\n".join(articles[:2])
+        prompt = f"""
+Aşağıda {symbol} hissesine dair en güncel bilanço ve finansal sonuç haberleri yer alıyor:
 {text}
 
-Bu verileri analiz et ve 3-4 cümlelik kısa, sade bir Türkçe bilanço özeti oluştur.
-Net kâr, ciro, borç, özkaynak gibi finansal kalemlerden bahset.
-Yatırım tavsiyesi verme.
+Bu haberleri analiz et ve 3-4 cümlelik kısa, sade bir Türkçe bilanço özeti oluştur.
+Yıl veya çeyrek belirtmeden yaz. Net kâr, ciro, marj veya borç/özsermaye gibi bilgileri vurgula.
+Yatırım tavsiyesi verme. Yanıt sadece özet metin olsun.
 """
-
-    try:
         resp = requests.post(
             "https://api.openai.com/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            },
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json={
                 "model": "gpt-4o-mini",
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 200,
-                "temperature": 0.5
+                "max_tokens": 220,
+                "temperature": 0.6,
             },
             timeout=25,
         )
 
         if resp.status_code != 200:
             print("AI özet hata:", resp.text, flush=True)
-            return {"summary": "⚠️ AI özet alınamadı."}
+            return {"summary": "⚠️ AI bilanço özeti alınamadı."}
 
         msg = (resp.json().get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
-        return {"summary": f"📊 Kaynak: Bigpara\n🧾 {msg}"}
+        return {"summary": f"🧾 {html.escape(msg)}"}
 
     except Exception as e:
         print("get_balance_summary hata:", e, flush=True)
-        return {"summary": "⚠️ Bilanço verisi alınamadı."}
+        return {"summary": "⚠️ Bilanço özeti alınamadı."}
 
 
 ##-------------------------MESAJ OLUŞTURMA-------------------------##
