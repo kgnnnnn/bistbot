@@ -24,12 +24,7 @@ def send_message(chat_id, text):
     try:
         requests.post(
             URL + "sendMessage",
-            params={
-                "chat_id": chat_id,
-                "text": text,
-                "parse_mode": "HTML",
-                "disable_web_page_preview": True,
-            },
+            params={"chat_id": chat_id, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True},
             timeout=10,
         )
     except Exception as e:
@@ -91,12 +86,7 @@ def analyze_news_with_ai(news_text):
         response = requests.post(
             "https://api.openai.com/v1/chat/completions",
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={
-                "model": "gpt-4o-mini",
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 120,
-                "temperature": 0.6,
-            },
+            json={"model": "gpt-4o-mini", "messages": [{"role": "user", "content": prompt}], "max_tokens": 120, "temperature": 0.6},
             timeout=15,
         )
         if response.status_code != 200:
@@ -109,36 +99,48 @@ def analyze_news_with_ai(news_text):
         print("AI yorum hatası:", e, flush=True)
         return "⚠️ AI yorum alınamadı."
 
-# =============== YAHOO FİYAT (Temel Veriler) ===============
-def get_price(symbol):
-    """YF rate-limit olursa sessizce None döner; sadece fiyat-temel bilgileri döner."""
-    try:
-        time.sleep(random.uniform(0.3, 0.6))
-        ticker = yf.Ticker(symbol.upper() + ".IS")
-        info = ticker.info
-        if not info or "currentPrice" not in info or info["currentPrice"] is None:
-            return None
-        return {
-            "url": f"https://finance.yahoo.com/quote/{symbol}.IS",
-            "fiyat": info.get("currentPrice"),
-            "degisim": f"{(info.get('regularMarketChangePercent') or 0):.2f}%",
-            "acilis": info.get("open"),
-            "kapanis": info.get("previousClose"),
-            "tavan": info.get("dayHigh"),
-            "taban": info.get("dayLow"),
-            "hacim": format_number(info.get("volume")),
-            "piyasa": format_number(info.get("marketCap")),
-        }
-    except Exception:
-        return None
-
-
-# =============== TRADINGVIEW (RSI, EMA50/200) ===============
-TV_URL = "https://tradingview-real-time.p.rapidapi.com/technicals/summary"
+# =============== TRADINGVIEW (Canlı Fiyat + RSI, EMA) ===============
 TV_HEADERS = {
     "x-rapidapi-key": "1749e090ffmsh612a371009ddbcap1c2f2cjsnaa23aba94831",
     "x-rapidapi-host": "tradingview-real-time.p.rapidapi.com",
 }
+
+def get_tv_price(symbol):
+    """TradingView'dan canlı fiyat, açılış, yüksek, düşük değerleri al."""
+    try:
+        r = requests.get(
+            "https://tradingview-real-time.p.rapidapi.com/price",
+            headers=TV_HEADERS,
+            params={"symbol": symbol.upper()},
+            timeout=8,
+        )
+        data = r.json().get("data", {})
+        if not data:
+            return None
+        return {
+            "fiyat": data.get("price"),
+            "acilis": data.get("open"),
+            "tavan": data.get("high"),
+            "taban": data.get("low"),
+            "hacim": format_number(data.get("volume")),
+        }
+    except Exception as e:
+        print("get_tv_price hata:", e, flush=True)
+        return None
+
+def get_tv_analysis(symbol):
+    try:
+        r = requests.get(
+            "https://tradingview-real-time.p.rapidapi.com/technicals/summary",
+            headers=TV_HEADERS,
+            params={"query": symbol.upper()},
+            timeout=8,
+        )
+        data = r.json().get("data", {})
+        return {"rsi": data.get("RSI"), "ema50": data.get("EMA50"), "ema200": data.get("EMA200")}
+    except Exception as e:
+        print("get_tv_analysis hata:", e, flush=True)
+        return None
 
 def map_rsi_label(rsi):
     try:
@@ -153,9 +155,7 @@ def map_rsi_label(rsi):
 
 def map_ema_signal(ema50, ema200):
     try:
-        e50 = float(ema50)
-        e200 = float(ema200)
-        return "AL" if e50 >= e200 else "SAT"
+        return "AL" if float(ema50) >= float(ema200) else "SAT"
     except:
         return "NÖTR"
 
@@ -166,141 +166,87 @@ def combine_recommendation(ema_sig, rsi_label):
         return "SATIŞ"
     return "NÖTR"
 
-def get_tv_analysis(symbol):
+# =============== YAHOO SADE (Piyasa Değeri & Hacim) ===============
+def get_price(symbol):
+    """Yahoo sadece hacim/piyasa verisi için fallback olarak kullanılır."""
     try:
-        query = {"query": symbol.upper()}
-        print(f"📡 TV /technicals/summary {query}", flush=True)
-        r = requests.get(TV_URL, headers=TV_HEADERS, params=query, timeout=8)
-        data = r.json()
-        d = data.get("data") if isinstance(data, dict) else None
-        if not d:
-            print(f"⚠️ TradingView veri boş döndü: {data}", flush=True)
-            return None
+        ticker = yf.Ticker(symbol.upper() + ".IS")
+        info = ticker.info or {}
         return {
-            "rsi": d.get("RSI"),
-            "ema50": d.get("EMA50"),
-            "ema200": d.get("EMA200"),
+            "piyasa": format_number(info.get("marketCap")),
+            "hacim": format_number(info.get("volume")),
         }
     except Exception as e:
-        print(f"⚠️ TradingView hata: {e}", flush=True)
-        return None
+        print("get_price hata:", e, flush=True)
+        return {}
 
-# =============== KAP + GOOGLE NEWS + AI BİLANÇO ===============
+# =============== BİLANÇO (KAP + AI) ===============
 def get_balance_summary(symbol):
-    symbol = symbol.upper().strip()
+    symbol = symbol.upper()
     api_key = os.getenv("OPENAI_API_KEY")
-
-    # --- 1️⃣ KAP RSS ---
     try:
-        url = "https://www.kap.org.tr/tr/RssFeed/All"
-        r = requests.get(url, timeout=15)
-        if r.status_code == 200:
-            root = ET.fromstring(r.text)
-            items = root.findall(".//item")
-            for it in items[:300]:
-                title = (it.findtext("title") or "").upper()
-                link = it.findtext("link") or ""
-                if symbol in title and ("FİNANSAL" in title or "BİLANÇO" in title):
-                    pub = it.findtext("pubDate") or ""
-                    return {
-                        "period": f"KAP Duyurusu ({pub})",
-                        "summary": f"📎 <a href='{link}'>Son finansal rapor PDF</a>\n{title}",
-                        "source": "KAP RSS"
-                    }
-    except Exception as e:
-        print("KAP RSS hata:", e, flush=True)
-
-    # --- 2️⃣ Google News + AI ---
-    try:
-        news_url = f"https://news.google.com/rss/search?q={symbol}+bilanço+OR+finansal+sonuçlar&hl=tr&gl=TR&ceid=TR:tr"
-        r = requests.get(news_url, timeout=10)
+        url = f"https://news.google.com/rss/search?q={symbol}+bilanço+OR+finansal+sonuçlar&hl=tr&gl=TR&ceid=TR:tr"
+        r = requests.get(url, timeout=10)
         root = ET.fromstring(r.text)
         items = root.findall(".//item")[:3]
         if not items:
-            return {"period": "—", "summary": "⚠️ Bilanço bilgisi bulunamadı."}
+            return {"summary": "⚠️ Bilanço bilgisi bulunamadı."}
         headlines = "\n".join([i.findtext("title") for i in items if i.findtext("title")])
-        if not api_key:
-            return {"period": "—", "summary": headlines}
-        prompt = (
-            f"Aşağıda {symbol} hissesiyle ilgili bilanço haber başlıkları bulunuyor:\n"
-            f"{headlines}\n\n"
-            "Bu haberlerden yola çıkarak 2-3 cümlelik kısa Türkçe özet yaz. "
-            "Net kâr, ciro, kâr marjı gibi verileri tahmin et; yatırım tavsiyesi verme."
-        )
+        prompt = f"{symbol} hissesi bilanço haberlerinden kısa bir Türkçe özet çıkar:\n{headlines}\nYatırım tavsiyesi verme."
         resp = requests.post(
             "https://api.openai.com/v1/chat/completions",
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={
-                "model": "gpt-4o-mini",
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 180,
-                "temperature": 0.6,
-            },
+            json={"model": "gpt-4o-mini", "messages": [{"role": "user", "content": prompt}], "max_tokens": 180},
             timeout=20,
         )
-        if resp.status_code != 200:
-            print("AI fallback hata:", resp.text, flush=True)
-            return {"period": "—", "summary": headlines}
         msg = (resp.json().get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
-        return {"period": "🧠 AI Haber Özet", "summary": msg, "source": "Google News + AI"}
+        return {"summary": msg}
     except Exception as e:
-        print("AI fallback hata:", e, flush=True)
-        return {"period": "—", "summary": "⚠️ Hiçbir kaynakta bilanço verisi bulunamadı.", "source": None}
+        print("get_balance_summary hata:", e, flush=True)
+        return {"summary": "⚠️ Bilanço verisi alınamadı."}
 
 # =============== MESAJ OLUŞTURMA ===============
 def build_message(symbol):
     symbol = symbol.strip().upper()
-    info = get_price(symbol)
+    tv_price = get_tv_price(symbol)
+    yahoo_info = get_price(symbol)
     tech = get_tv_analysis(symbol)
+
     lines = [f"💹 <b>{symbol}</b> Hisse Özeti (BIST100)"]
+    if tv_price:
+        lines.append(f"💰 Fiyat: {tv_price.get('fiyat')} TL")
+        lines.append(f"🔼 Tavan: {tv_price.get('tavan')} | 🔽 Taban: {tv_price.get('taban')}")
+        lines.append(f"📊 Açılış: {tv_price.get('acilis')}")
+    if yahoo_info.get("piyasa"):
+        lines.append(f"🏢 Piyasa Değeri: {yahoo_info['piyasa']}")
+    if yahoo_info.get("hacim"):
+        lines.append(f"💸 Hacim: {yahoo_info['hacim']}")
 
-    # --- Fiyat & Temel ---
-    if info:
-        if info.get("fiyat"):
-            lines.append(f"💰 Fiyat: {info['fiyat']} TL")
-        if info.get("degisim") != "0.00%":
-            lines.append(f"📈 Günlük Değişim: {info['degisim']}")
-        if info.get("piyasa"):
-            lines.append(f"🏢 Piyasa Değeri: {info['piyasa']}")
-
-    # --- Teknik Analiz ---
     if tech:
         rsi_val = tech.get("rsi")
-        ema50 = tech.get("ema50")
-        ema200 = tech.get("ema200")
+        ema50, ema200 = tech.get("ema50"), tech.get("ema200")
         rsi_label = map_rsi_label(rsi_val)
         ema_sig = map_ema_signal(ema50, ema200)
         overall = combine_recommendation(ema_sig, rsi_label)
-
         lines.append("\n\n📊 <b>Teknik Analiz</b>")
         lines.append(f"⚡ RSI: {rsi_val} ({rsi_label})")
         lines.append(f"🔄 EMA(50/200): {ema_sig}")
         lines.append(f"🤖 <b>Kriptos AI:</b> {overall}")
     else:
-        lines.append("\n\n📊 Teknik analiz verisi alınamadı.")
+        lines.append("\n\n📊 Teknik analiz alınamadı.")
 
-    # --- Bilanço Özeti ---
     fin = get_balance_summary(symbol)
     if fin:
         lines.append("\n\n🏦 <b>Bilanço Özeti</b>")
-        if fin.get("summary"):
-            lines.append(f"🤖 <b>Kriptos AI:</b>")
-            lines.append(f"🧾 {fin['summary']}")
+        lines.append(f"🤖 <b>Kriptos AI:</b>")
+        lines.append(f"🧾 {fin['summary']}")
 
-    # --- Haberler ---
     news_text = get_news(symbol)
     lines.append("\n\n" + news_text)
-
-    # --- AI Haber Yorumu ---
     ai_comment = analyze_news_with_ai(news_text)
     lines.append("\n" + ai_comment)
-
-    # --- Görüş & Öneri ---
     lines.append("\n\n<b>💬 Görüş & Öneri:</b> @kriptosbtc")
-
     return "\n".join(lines)
-
-
 
 # =============== ANA DÖNGÜ ===============
 def main():
@@ -320,10 +266,9 @@ def main():
                 continue
             processed.add(uid)
             last_update_id = uid + 1
-            message = item.get("message", {}) or {}
-            chat = message.get("chat", {}) or {}
-            chat_id = chat.get("id")
-            text = (message.get("text") or "").strip()
+            msg_data = item.get("message", {})
+            chat_id = msg_data.get("chat", {}).get("id")
+            text = (msg_data.get("text") or "").strip()
             if not chat_id or not text:
                 continue
             if text.lower() == "/start":
