@@ -16,7 +16,6 @@ import html
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 
-
 openai.api_key = os.getenv("OPENAI_API_KEY")
 print("DEBUG OPENAI KEY:", openai.api_key[:10] if openai.api_key else "YOK", flush=True)
 
@@ -70,7 +69,6 @@ def get_news(symbol):
         if r.status_code != 200:
             return "📰 Haberler alınamadı."
 
-        # XML parse fix
         xml_data = r.text.encode("utf-8", "ignore").decode("utf-8", "ignore")
         xml_data = xml_data.replace("&", "&amp;")
 
@@ -91,7 +89,6 @@ def get_news(symbol):
     except Exception as e:
         print("get_news hata:", e, flush=True)
         return "📰 Haberler alınamadı."
-
 
 
 # =============== HABER ANALİZİ (OpenAI - Kriptos AI) ===============
@@ -164,12 +161,25 @@ def get_tv_analysis(symbol):
         print("get_tv_analysis hata:", e, flush=True)
         return None
 
+
 def map_rsi_label(rsi):
+    """RSI değerine göre sinyal döndürür."""
     try:
         r = float(rsi)
-        return round(r, 2)  # ✅ RSI değeri artık 2 ondalık basamakla gösteriliyor
+        r = round(r, 2)
+        if r < 20:
+            return f"{r} (GÜÇLÜ AL)"
+        elif r < 30:
+            return f"{r} (AL)"
+        elif r > 85:
+            return f"{r} (GÜÇLÜ SAT)"
+        elif r > 70:
+            return f"{r} (SAT)"
+        else:
+            return f"{r} (NÖTR)"
     except:
         return "NÖTR"
+
 
 def map_ema_signal(ema50, ema200):
     try:
@@ -177,17 +187,21 @@ def map_ema_signal(ema50, ema200):
     except:
         return "NÖTR"
 
+
 def combine_recommendation(ema_sig, rsi_label):
-    if ema_sig == "AL" and rsi_label in ("AL", "GÜÇLÜ AL"):
-        return "ALIŞ"
-    if ema_sig == "SAT" and rsi_label in ("SAT", "GÜÇLÜ SAT"):
-        return "SATIŞ"
+    """EMA ve RSI sinyallerine göre Kriptos AI genel yorumu üretir."""
+    if ("AL" in rsi_label or "GÜÇLÜ AL" in rsi_label) and ema_sig == "AL":
+        return "AL"
+    if ("SAT" in rsi_label or "GÜÇLÜ SAT" in rsi_label) and ema_sig == "SAT":
+        return "SAT"
     return "NÖTR"
+
 
 ### BILANCO OZET ###
 def get_balance_summary(symbol):
     """Şimdilik pasif: bilanço özeti yakında eklenecek."""
     return {"summary": "🤖 <b>Kriptos AI:</b> ÇOK YAKINDA"}
+
 
 ##-------------------------MESAJ OLUŞTURMA-------------------------##
 def build_message(symbol):
@@ -235,6 +249,7 @@ def build_message(symbol):
     lines.append("\n<b>💬 Görüş & Öneri:</b> @kriptosbtc")
     return "\n".join(lines)
 
+
 # =============== ANA DÖNGÜ ===============
 def main():
     print("🚀 Kriptos Borsa Botu aktif!", flush=True)
@@ -261,10 +276,13 @@ def main():
             if text.lower() == "/start":
                 msg = (
                     "👋 <b>Kriptos BIST100 Takip Botu'na Hoş Geldin!</b>\n\n"
-                    "💬 Hisse kodunu (örnek: ASELS, THYAO) yaz.\n"
-                    "📈 Fiyat, RSI, EMA, bilanço ve haber özetlerini getiririm.\n\n"
-                    "🤖 Yapay zeka bilanço & haber özetlerini oluşturur.\n"
-                    "⚙️ Kaynaklar: TradingView, Google News, OpenAI, Yahoo Finance."
+                    "💬 Sadece hisse kodunu (örnek: ASELS, THYAO...) yazın.\n\n"
+                    "💡  Algoritmamız fiyat, güncel haberler, hacim vb. bilgileri iletir.\n\n"
+                    "🤖 Yapay zeka destekli algoritmamız RSI ve EMA indikatör analizleri yapar ve (al-sat-vb.) önermeler üretir.\n\n"
+                    "⚙️ Veriler: TradingView & Yahoo Finance'den sağlanmaktadır.\n\n"
+                    "❗️  UYARI: Bilgiler kesinlikle YATIRIM TAVSİYESİ kapsamında değildir!\n\n"
+                    "📊 Komut örneği: <b>ASELS/asels</b>\n\n"
+                    "📩 Sorun veya öneriler için @kriptosbtc ile iletişime geçebilirsiniz."
                 )
                 send_message(chat_id, msg)
                 continue
