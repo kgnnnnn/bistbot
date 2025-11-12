@@ -186,68 +186,69 @@ def combine_recommendation(ema_sig, rsi_label):
         return "SATIŞ"
     return "NÖTR"
 
-# =============== BİLANÇO (Sadece Finansal Haberler + AI Özetleme) ===============
+# =============== BİLANÇO (Web Tarama + OpenAI) ===============
+from bs4 import BeautifulSoup
 
 def get_balance_summary(symbol):
-    """
-    {symbol} hissesine dair SON BİLANÇO veya finansal sonuç haberlerini toplar.
-    Gereksiz haberleri filtreler, yalnızca bilanço odaklı haberleri OpenAI ile özetler.
-    """
+    """Son bilanço haberlerini webden bulur, metni özetler."""
     symbol = symbol.upper().strip()
     api_key = os.getenv("OPENAI_API_KEY")
+    sources = [
+        f"https://www.borsamatik.com.tr/arama/{symbol}+bilanço",
+        f"https://www.finansopia.com/?s={symbol}+bilanço",
+        f"https://www.paraanaliz.com/?s={symbol}+bilanço",
+    ]
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
     try:
-        # --- 1️⃣ Google News Araması (çoklu kaynak) ---
-        query = (
-            f"{symbol} bilanço OR finansal sonuç OR net kar OR zarar OR gelir tablosu "
-            f"site:borsamatik.com.tr OR site:finansopia.com OR site:bigpara.com OR "
-            f"site:dunya.com OR site:midas.com.tr"
-        )
-        url = f"https://news.google.com/rss/search?q={requests.utils.quote(query)}&hl=tr&gl=TR&ceid=TR:tr"
-        r = requests.get(url, timeout=10)
-        soup = BeautifulSoup(r.text, "xml")
-        items = soup.find_all("item")[:5]  # en güncel 5 haber
-        if not items:
-            return {"summary": "⚠️ Güncel bilanço haberi bulunamadı."}
-
-        # --- 2️⃣ Filtreleme (yalnızca finansal içerikli başlıklar) ---
-        finansal_kelimeler = ["bilanço", "finansal", "kâr", "zarar", "gelir tablosu", "faaliyet sonucu"]
-        filtered = []
-        for it in items:
-            title = it.title.text.lower()
-            if any(k in title for k in finansal_kelimeler):
-                filtered.append(it)
-        if not filtered:
-            return {"summary": "⚠️ Uygun finansal haber bulunamadı."}
-
-        # --- 3️⃣ İçerikleri Çekme ---
-        articles = []
-        for it in filtered[:3]:  # ilk 3 uygun haberi al
-            link = it.link.text.strip()
-            title = it.title.text.strip()
-            try:
-                page = requests.get(link, timeout=8)
-                psoup = BeautifulSoup(page.text, "html.parser")
-                paragraphs = " ".join(
-                    [p.get_text(strip=True) for p in psoup.find_all("p") if len(p.get_text(strip=True)) > 50]
-                )
-                if paragraphs:
-                    articles.append(f"{title}\n{paragraphs[:1200]}")
-            except Exception:
+        all_text = ""
+        for url in sources:
+            r = requests.get(url, headers=headers, timeout=10)
+            if r.status_code != 200:
                 continue
 
-        if not articles:
-            return {"summary": "⚠️ Haber metni alınamadı."}
+            soup = BeautifulSoup(r.text, "html.parser")
+            # makale linklerini bul
+            links = [a.get("href") for a in soup.find_all("a", href=True) if "bilanço" in a.get("href")]
+            links = list(dict.fromkeys(links))[:3]  # tekrarları kaldır, ilk 3 haberi al
 
-        # --- 4️⃣ OpenAI Özetleme ---
-        text = "\n\n".join(articles[:2])
+            for link in links:
+                try:
+                    if not link.startswith("http"):
+                        if "borsamatik" in url:
+                            link = "https://www.borsamatik.com.tr" + link
+                        elif "finansopia" in url:
+                            link = "https://www.finansopia.com" + link
+                        elif "paraanaliz" in url:
+                            link = "https://www.paraanaliz.com" + link
+
+                    sub = requests.get(link, headers=headers, timeout=10)
+                    sub_soup = BeautifulSoup(sub.text, "html.parser")
+
+                    # metni <p>, <article> veya <div> içinden çek
+                    paragraphs = [p.get_text(" ", strip=True) for p in sub_soup.find_all(["p", "article", "div"]) if len(p.get_text(strip=True)) > 40]
+                    content = " ".join(paragraphs)
+                    if len(content) > 300:
+                        all_text += f"\n\n{content}"
+                        break
+                except Exception as e:
+                    print("Alt link hata:", e, flush=True)
+                    continue
+
+            if all_text.strip():
+                break  # bir kaynakta bulunduysa diğerlerini deneme
+
+        if not all_text.strip():
+            return {"summary": "⚠️ Güncel bilanço haberi bulunamadı."}
+
+        # --- OpenAI özet ---
         prompt = f"""
-Aşağıda {symbol} hissesine dair en güncel bilanço ve finansal sonuç haberleri yer alıyor:
-{text}
+Aşağıda {symbol} hissesine ait güncel bilanço haberi metni var:
+{all_text[:4000]}
 
-Bu haberleri analiz et ve 3-4 cümlelik kısa, sade bir Türkçe bilanço özeti oluştur.
-Yıl veya çeyrek belirtmeden yaz. Net kâr, ciro, marj veya borç/özsermaye gibi bilgileri vurgula.
-Yatırım tavsiyesi verme. Yanıt sadece özet metin olsun.
+Bu metne dayanarak, en fazla 3-4 cümlelik kısa bir Türkçe bilanço özeti yaz.
+Net kâr, ciro, borç, özkaynak gibi finansal yönleri belirt. 
+Yatırım tavsiyesi verme.
 """
         resp = requests.post(
             "https://api.openai.com/v1/chat/completions",
@@ -255,10 +256,10 @@ Yatırım tavsiyesi verme. Yanıt sadece özet metin olsun.
             json={
                 "model": "gpt-4o-mini",
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 220,
-                "temperature": 0.6,
+                "max_tokens": 180,
+                "temperature": 0.5,
             },
-            timeout=25,
+            timeout=30,
         )
 
         if resp.status_code != 200:
@@ -266,12 +267,11 @@ Yatırım tavsiyesi verme. Yanıt sadece özet metin olsun.
             return {"summary": "⚠️ AI bilanço özeti alınamadı."}
 
         msg = (resp.json().get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
-        return {"summary": f"🧾 {html.escape(msg)}"}
+        return {"summary": f"🧾 {msg}"}
 
     except Exception as e:
         print("get_balance_summary hata:", e, flush=True)
-        return {"summary": "⚠️ Bilanço özeti alınamadı."}
-
+        return {"summary": "⚠️ Bilanço verisi alınamadı."}
 
 ##-------------------------MESAJ OLUŞTURMA-------------------------##
 def build_message(symbol):
