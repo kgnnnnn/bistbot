@@ -184,99 +184,137 @@ def combine_recommendation(ema_sig, rsi_label):
         return "SATIŞ"
     return "NÖTR"
 
-# =============== KAP PDF + AI BİLANÇO (STABLE) ===============
+# ---- KAP RSS ROBUST FETCH + PDF + AI BILANCO ----
+import time
+import feedparser
+from io import BytesIO
+from PyPDF2 import PdfReader
+
+def _requests_get_with_retries(url, headers=None, tries=3, timeout=12, backoff=1.0):
+    """Basit retry wrapper; döner: (response or None, err or None)"""
+    for attempt in range(1, tries+1):
+        try:
+            r = requests.get(url, headers=headers, timeout=timeout)
+            return r, None
+        except Exception as e:
+            print(f"_requests_get_with_retries: attempt {attempt} error: {e}", flush=True)
+            if attempt < tries:
+                time.sleep(backoff * attempt)
+    return None, "failed"
 
 def extract_pdf_text(pdf_url):
     """KAP PDF içeriğini indirip ilk 2 sayfasını metne çevirir."""
     try:
-        r = requests.get(pdf_url, timeout=15)
-        if r.status_code != 200 or not r.content:
-            print(f"⚠️ PDF indirilemedi: {pdf_url}", flush=True)
+        r, err = _requests_get_with_retries(pdf_url, headers={"User-Agent": "Mozilla/5.0"}, tries=3, timeout=15)
+        if not r or r.status_code != 200 or not r.content:
+            print(f"PDF indirilemedi: {pdf_url} status={getattr(r,'status_code',None)}", flush=True)
             return ""
         pdf = BytesIO(r.content)
         reader = PdfReader(pdf)
         text = ""
         for page in reader.pages[:2]:
-            page_text = page.extract_text() or ""
-            text += page_text + "\n"
+            text += (page.extract_text() or "") + "\n"
         return text[:4000]
     except Exception as e:
         print("PDF okuma hata:", e, flush=True)
         return ""
 
-
 def get_balance_summary(symbol):
-    """KAP RSS üzerinden PDF raporlarını bulur ve AI bilanço özetini döner."""
-    symbol = symbol.upper().strip()
+    """
+    Daha güvenli KAP RSS fetch:
+     - requests ile çek, User-Agent ekle, retry yap
+     - feedparser ile parse et
+     - entry yoksa Google News fallback kullan
+    """
+    symbol = (symbol or "").upper().strip()
     api_key = os.getenv("OPENAI_API_KEY")
+    RSS_URL = "https://www.kap.org.tr/tr/RssFeed/All"
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; kriptos-bot/1.0)"}
 
     try:
-        # --- RSS feedini oku ---
-        feed = feedparser.parse("https://www.kap.org.tr/tr/RssFeed/All")
-        if not feed.entries:
-            print("⚠️ KAP RSS boş geldi", flush=True)
-            return {"summary": "⚠️ KAP RSS boş geldi veya erişilemedi."}
+        # 1) requests + feedparser approach (sağlam fetch)
+        r, err = _requests_get_with_retries(RSS_URL, headers=headers, tries=3, timeout=12)
+        if not r:
+            print("KAP fetch failed (requests). err:", err, flush=True)
+        else:
+            print("KAP fetch status:", r.status_code, "len:", len(r.content or b""), flush=True)
+            # küçük içerik kontrolü
+            if r.status_code == 200 and (r.content and len(r.content) > 200):
+                feed = feedparser.parse(r.content)
+                if feed and getattr(feed, "entries", None):
+                    print("feedparser entries:", len(feed.entries), flush=True)
+                    # arama: ilgili bildirimi bul
+                    for entry in feed.entries[:400]:
+                        title = (getattr(entry, "title", "") or "").upper()
+                        link = getattr(entry, "link", "") or ""
+                        if not title or not link:
+                            continue
+                        if symbol in title and any(word in title for word in ["FİNANSAL", "BİLANÇO", "MALİ TABLO", "UFRS"]):
+                            # PDF url yap
+                            pdf_url = link.replace("/tr/Bildirim/", "/tr/BildirimPdf/")
+                            if not pdf_url.endswith(".pdf"):
+                                pdf_url += ".pdf"
+                            print("📎 PDF bulundu (RSS):", pdf_url, flush=True)
+                            text = extract_pdf_text(pdf_url)
+                            if not text.strip():
+                                return {"summary": f"⚠️ PDF okunamadı: <a href='{pdf_url}'>KAP PDF</a>"}
+                            # AI özet isteği
+                            prompt = f"Aşağıda {symbol} hissesinin KAP raporundan kısa metin var. 3-4 cümle bilanço özeti yaz. {text[:3500]}"
+                            resp = requests.post(
+                                "https://api.openai.com/v1/chat/completions",
+                                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                                json={"model": "gpt-4o-mini", "messages":[{"role":"user","content":prompt}], "max_tokens":220},
+                                timeout=30,
+                            )
+                            if resp.status_code != 200:
+                                print("OpenAI hata:", resp.status_code, resp.text, flush=True)
+                                return {"summary": f"📎 <a href='{pdf_url}'>KAP PDF</a>\n⚠️ AI özet alınamadı."}
+                            msg = (resp.json().get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
+                            return {"summary": f"📎 <a href='{pdf_url}'>KAP PDF</a>\n🧾 {msg}"}
 
-        # --- İlgili PDF bildirimi bul ---
-        for entry in feed.entries[:400]:
-            title = (entry.title or "").upper()
-            link = (entry.link or "").strip()
-            if not title or not link:
-                continue
+                else:
+                    print("feedparser returned no entries or content too small", flush=True)
+            else:
+                print("KAP returned non-200 or empty body", flush=True)
 
-            # Finansal içerikli bildirimi bul
-            if symbol in title and any(word in title for word in ["FİNANSAL", "BİLANÇO", "MALİ TABLO", "UFRS"]):
-                pdf_url = link.replace("/tr/Bildirim/", "/tr/BildirimPdf/")
-                if not pdf_url.endswith(".pdf"):
-                    pdf_url += ".pdf"
+        # 2) Eğer burada gelmediyse: alternatif - feedparser direkt URL dene (bazı hostlar buna cevap verir)
+        try_alt = "https://www.kap.org.tr/tr/RssFeed/All"
+        f2 = feedparser.parse(try_alt)
+        if f2 and getattr(f2, "entries", None) and len(f2.entries) > 0:
+            print("feedparser.parse(alt) entries:", len(f2.entries), flush=True)
+            # (tekrar aynı mantıkla kontrol et)
+        else:
+            print("Alternatif feedparser parse de boş", flush=True)
 
-                print(f"📎 PDF bulundu: {pdf_url}", flush=True)
-
-                # PDF'i indirip ilk sayfaları oku
-                text = extract_pdf_text(pdf_url)
-                if not text.strip():
-                    return {"summary": f"⚠️ PDF metni okunamadı: <a href='{pdf_url}'>KAP PDF</a>"}
-
-                # --- AI özet oluştur ---
-                prompt = f"""
-Aşağıda {symbol} hissesinin KAP'ta yayımlanmış finansal rapor metni yer alıyor.
-Bu metni analiz et ve 3-4 cümlelik sade bir Türkçe bilanço özeti yaz.
-Net kâr, ciro, borç/özsermaye, marj gibi finansal noktalara değin ama yatırım tavsiyesi verme.
-
-{text[:3500]}
-"""
-
-                r = requests.post(
+        # 3) Son çare fallback: Google News + AI (mevcut fallback)
+        print("⚠️ RSS başarısız — Google News fallback denenecek", flush=True)
+        news_url = f"https://news.google.com/rss/search?q={symbol}+bilanço+OR+finansal+sonuçlar&hl=tr&gl=TR&ceid=TR:tr"
+        nr, _ = _requests_get_with_retries(news_url, headers=headers, tries=2, timeout=10)
+        if nr and nr.status_code == 200 and nr.content and len(nr.content) > 50:
+            feed2 = feedparser.parse(nr.content)
+            items = feed2.entries[:3] if getattr(feed2, "entries", None) else []
+            if items:
+                headlines = "\n".join([getattr(i, "title", "") for i in items])
+                if not api_key:
+                    return {"summary": headlines}
+                prompt = f"{symbol} bilanço haber başlıkları:\n{headlines}\nKısa 2-3 cümle bilanço özeti yaz."
+                resp = requests.post(
                     "https://api.openai.com/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": "gpt-4o-mini",
-                        "messages": [{"role": "user", "content": prompt}],
-                        "max_tokens": 220,
-                        "temperature": 0.5,
-                    },
-                    timeout=30,
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    json={"model":"gpt-4o-mini","messages":[{"role":"user","content":prompt}], "max_tokens":200},
+                    timeout=20,
                 )
+                if resp.status_code == 200:
+                    msg = (resp.json().get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
+                    return {"summary": msg or "⚠️ AI özet alınamadı."}
+                else:
+                    print("AI fallback hata:", resp.status_code, resp.text, flush=True)
 
-                if r.status_code != 200:
-                    print("⚠️ OpenAI yanıt hatası:", r.text, flush=True)
-                    return {"summary": f"📎 <a href='{pdf_url}'>KAP PDF</a>\n⚠️ AI özet alınamadı."}
-
-                msg = (r.json().get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
-                msg = msg or "⚠️ AI özet oluşturulamadı."
-                return {"summary": f"📎 <a href='{pdf_url}'>KAP PDF</a>\n🧾 {msg}"}
-
-        # Hiç uygun PDF bulunmadıysa:
-        return {"summary": "⚠️ KAP'ta ilgili finansal rapor bulunamadı."}
+        return {"summary": "⚠️ KAP'ta finansal rapor bulunamadı ve Google News fallback de yetersiz."}
 
     except Exception as e:
         print("get_balance_summary hata:", e, flush=True)
         return {"summary": "⚠️ Bilanço verisi alınamadı."}
-
-
 
 ## MESAJ OLUŞTURM A###
 def build_message(symbol):
