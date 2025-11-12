@@ -3,6 +3,8 @@ from flask import Flask
 from threading import Thread
 import openai
 import xml.etree.ElementTree as ET
+from io import BytesIO
+from PyPDF2 import PdfReader
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 print("DEBUG OPENAI KEY:", openai.api_key[:10] if openai.api_key else "YOK", flush=True)
@@ -29,10 +31,8 @@ def send_message(chat_id, text):
     except Exception as e:
         print("Send error:", e, flush=True)
 
-
 # =============== SAYI BİÇİMLENDİRME ===============
 def format_number(num):
-    """Sayıları 12.345.678 formatında döndürür."""
     try:
         if num in (None, "—"):
             return None
@@ -45,7 +45,6 @@ def format_number(num):
     except Exception:
         return None
 
-
 # =============== HABERLER (Google RSS) ===============
 def get_news(symbol):
     try:
@@ -56,17 +55,18 @@ def get_news(symbol):
         root = ET.fromstring(r.text)
         items = root.findall(".//item")[:3]
         if not items:
-            return "📰 Lütfen hisse kodunu doğru giriniz. (Örn: ASELS)"
+            return "📰 Lütfen Hisse Kodunu Doğru Giriniz. Örn: ASELS/asels"
         haberler = ["🗞️ <b>Son Haberler</b>"]
         for item in items:
             title = item.find("title").text
             link = item.find("link").text
-            haberler.append(f"🔹 <a href='{link}'>{title}</a>")
+            pub_node = item.find("pubDate")
+            pub = pub_node.text[:16] if pub_node is not None and pub_node.text else ""
+            haberler.append(f"🔹 <a href='{link}'>{title}</a> ({pub})")
         return "\n".join(haberler)
     except Exception as e:
         print("News error:", e, flush=True)
         return "📰 Haberler alınamadı."
-
 
 # =============== HABER ANALİZİ (OpenAI - Kriptos AI) ===============
 def analyze_news_with_ai(news_text):
@@ -74,32 +74,31 @@ def analyze_news_with_ai(news_text):
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             return "⚠️ AI yorum yapılamadı (API anahtarı eksik)."
-        if "Haberler alınamadı" in news_text or "Lütfen" in news_text:
-            return "⚠️ Geçerli haber bulunamadı."
+        if "Haberler alınamadı" in news_text or "Lütfen Hisse Kodunu" in news_text:
+            return "⚠️ Yorum yapılacak geçerli haber bulunamadı."
 
         prompt = (
             "Aşağıda Borsa İstanbul'da işlem gören bir hisseye ait son haber başlıkları bulunuyor.\n"
             "Bu başlıkları analiz et; 1-2 cümlelik kısa bir Türkçe özet oluştur ve genel piyasa hissiyatını belirt (pozitif / negatif / nötr).\n"
-            "Yatırım tavsiyesi verme.\n"
-            "Yanıtını '🤖 <b>Kriptos AI Yorum:</b>' etiketiyle başlat.\n\n"
+            "Yatırım tavsiyesi verme. Sonuçta '🤖 <b>Kriptos AI Yorum:</b>' etiketiyle başla.\n\n"
             f"{news_text}"
         )
 
-        r = requests.post(
+        response = requests.post(
             "https://api.openai.com/v1/chat/completions",
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={"model": "gpt-4o-mini", "messages": [{"role": "user", "content": prompt}], "max_tokens": 120},
+            json={"model": "gpt-4o-mini", "messages": [{"role": "user", "content": prompt}], "max_tokens": 120, "temperature": 0.6},
             timeout=15,
         )
-        if r.status_code != 200:
+        if response.status_code != 200:
+            print("AI HTTP Hata:", response.text, flush=True)
             return "⚠️ AI yorum alınamadı."
-        data = r.json()
+        data = response.json()
         msg = data.get("choices", [{}])[0].get("message", {}).get("content")
         return msg.strip() if msg else "⚠️ AI yorum alınamadı."
     except Exception as e:
         print("AI yorum hatası:", e, flush=True)
         return "⚠️ AI yorum alınamadı."
-
 
 # =============== YAHOO FİYAT ===============
 def get_price(symbol):
@@ -121,22 +120,12 @@ def get_price(symbol):
         print("get_price hata:", e, flush=True)
         return None
 
-
-# =============== TRADINGVIEW (RSI, EMA50/EMA200) ===============
+# =============== TRADINGVIEW (RSI, EMA) ===============
 TV_URL = "https://tradingview-real-time.p.rapidapi.com/technicals/summary"
 TV_HEADERS = {
     "x-rapidapi-key": "1749e090ffmsh612a371009ddbcap1c2f2cjsnaa23aba94831",
     "x-rapidapi-host": "tradingview-real-time.p.rapidapi.com",
 }
-
-def get_tv_analysis(symbol):
-    try:
-        r = requests.get(TV_URL, headers=TV_HEADERS, params={"query": symbol.upper()}, timeout=8)
-        data = r.json().get("data", {})
-        return {"rsi": data.get("RSI"), "ema50": data.get("EMA50"), "ema200": data.get("EMA200")}
-    except Exception as e:
-        print("get_tv_analysis hata:", e, flush=True)
-        return None
 
 def map_rsi_label(rsi):
     try:
@@ -162,82 +151,103 @@ def combine_recommendation(ema_sig, rsi_label):
         return "SATIŞ"
     return "NÖTR"
 
+def get_tv_analysis(symbol):
+    try:
+        query = {"query": symbol.upper()}
+        r = requests.get(TV_URL, headers=TV_HEADERS, params=query, timeout=8)
+        data = r.json()
+        d = data.get("data") if isinstance(data, dict) else None
+        if not d:
+            return None
+        return {"rsi": d.get("RSI"), "ema50": d.get("EMA50"), "ema200": d.get("EMA200")}
+    except Exception as e:
+        print("get_tv_analysis hata:", e, flush=True)
+        return None
 
-# =============== BİLANÇO (AI) ===============
+# =============== KAP PDF + AI BİLANÇO ===============
+def extract_pdf_text(pdf_url):
+    """KAP PDF içeriğini indirip ilk 2 sayfasını metne çevirir."""
+    try:
+        r = requests.get(pdf_url, timeout=15)
+        pdf = BytesIO(r.content)
+        reader = PdfReader(pdf)
+        text = ""
+        for page in reader.pages[:2]:
+            text += page.extract_text() or ""
+        return text[:4000]
+    except Exception as e:
+        print("PDF okuma hata:", e, flush=True)
+        return ""
+
 def get_balance_summary(symbol):
     symbol = symbol.upper()
     api_key = os.getenv("OPENAI_API_KEY")
     try:
-        url = f"https://news.google.com/rss/search?q={symbol}+bilanço+OR+finansal+sonuçlar&hl=tr&gl=TR&ceid=TR:tr"
-        r = requests.get(url, timeout=10)
+        url = "https://www.kap.org.tr/tr/RssFeed/All"
+        r = requests.get(url, timeout=15)
         root = ET.fromstring(r.text)
-        items = root.findall(".//item")[:3]
-        if not items:
-            return {"summary": "⚠️ Güncel bilanço bilgisi bulunamadı."}
-        headlines = "\n".join([i.findtext("title") for i in items if i.findtext("title")])
-        prompt = (
-            f"{symbol} hissesiyle ilgili son bilanço ve finansal haberleri analiz et:\n{headlines}\n\n"
-            "Kısa bir Türkçe özet yaz (maksimum 3 cümle). Yıl veya çeyrek belirtme. "
-            "Kâr, ciro veya marj artışı gibi finansal yönleri sade biçimde açıkla. "
-            "Yatırım tavsiyesi verme."
-        )
-        resp = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={"model": "gpt-4o-mini", "messages": [{"role": "user", "content": prompt}], "max_tokens": 160},
-            timeout=20,
-        )
-        msg = (resp.json().get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
-        return {"summary": msg}
+        items = root.findall(".//item")
+        for it in items[:300]:
+            title = (it.findtext("title") or "").upper()
+            link = it.findtext("link") or ""
+            if symbol in title and ("FİNANSAL" in title or "BİLANÇO" in title or "MALİ TABLO" in title):
+                pdf_url = link.replace("/tr/Bildirim/", "/tr/BildirimPdf/") + ".pdf"
+                text = extract_pdf_text(pdf_url)
+                prompt = f"""
+Aşağıda {symbol} hissesinin KAP'ta yayımlanmış finansal raporu yer alıyor.
+Metni incele ve 3-4 cümlelik kısa bir Türkçe bilanço özeti oluştur.
+Net kâr, ciro, borç/özsermaye gibi bilgileri belirt. 
+Yatırım tavsiyesi verme.
+
+{text[:3500]}
+"""
+                resp = requests.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                    json={"model": "gpt-4o-mini", "messages": [{"role": "user", "content": prompt}], "max_tokens": 200, "temperature": 0.5},
+                    timeout=25,
+                )
+                msg = (resp.json().get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
+                return {"summary": f"📎 <a href='{pdf_url}'>KAP PDF</a>\n🧾 {msg}"}
+        return {"summary": "⚠️ KAP'ta finansal rapor bulunamadı."}
     except Exception as e:
         print("get_balance_summary hata:", e, flush=True)
         return {"summary": "⚠️ Bilanço verisi alınamadı."}
 
-
+# =============== MESAJ OLUŞTURMA ===============
 def build_message(symbol):
     symbol = symbol.strip().upper()
     info = get_price(symbol)
     tech = get_tv_analysis(symbol)
+
     lines = [f"💹 <b>{symbol}</b> Hisse Özeti (BIST100)"]
-
-    # --- Fiyat ---
     if info:
-        lines.append(f"💰 Fiyat: {info['fiyat']} TL")
-        if info.get("acilis"):
-            lines.append(f"📈 Açılış: {info['acilis']}")
-        if info.get("kapanis"):
-            lines.append(f"📉 Kapanış: {info['kapanis']}")
-        if info.get("tavan"):
-            lines.append(f"🔼 Tavan: {info['tavan']}")
-        if info.get("taban"):
-            lines.append(f"🔽 Taban: {info['taban']}")
+        lines.append(f"💰 Fiyat: {info.get('fiyat')} TL")
+        lines.append(f"🌅 Açılış: {info.get('acilis')} | 🌇 Kapanış: {info.get('kapanis')}")
+        lines.append(f"🔼 Tavan: {info.get('tavan')} | 🔽 Taban: {info.get('taban')}")
 
-    # --- Teknik Analiz ---
     if tech:
-        rsi_val = tech.get("rsi")
-        ema50, ema200 = tech.get("ema50"), tech.get("ema200")
-        rsi_label = map_rsi_label(rsi_val)
-        ema_sig = map_ema_signal(ema50, ema200)
+        rsi_val, ema50, ema200 = tech.get("rsi"), tech.get("ema50"), tech.get("ema200")
+        rsi_label, ema_sig = map_rsi_label(rsi_val), map_ema_signal(ema50, ema200)
         overall = combine_recommendation(ema_sig, rsi_label)
-        lines.append("\n📊 <b>Teknik Analiz</b>")
+        lines.append("\n\n📊 <b>Teknik Analiz</b>")
         lines.append(f"⚡ RSI: {rsi_val} ({rsi_label})")
         lines.append(f"🔄 EMA(50/200): {ema_sig}")
         lines.append(f"🤖 <b>Kriptos AI:</b> {overall}")
+    else:
+        lines.append("\n\n📊 Teknik analiz alınamadı.")
 
-    # --- Bilanço Özeti ---
     fin = get_balance_summary(symbol)
-    if fin and fin.get("summary"):
-        lines.append("\n🏦 <b>Bilanço Özeti</b>")
-        lines.append("🤖 <b>Kriptos AI:</b>")
-        lines.append(f"🧾 {fin['summary']}")
+    lines.append("\n\n🏦 <b>Bilanço Özeti</b>")
+    lines.append(f"🤖 <b>Kriptos AI:</b>")
+    lines.append(fin["summary"])
 
-    # --- Haberler ---
     news_text = get_news(symbol)
-    lines.append("\n" + news_text)
+    lines.append("\n\n" + news_text)
     ai_comment = analyze_news_with_ai(news_text)
     lines.append("\n" + ai_comment)
+    lines.append("\n\n<b>💬 Görüş & Öneri:</b> @kriptosbtc")
 
-    lines.append("\n<b>💬 Görüş & Öneri:</b> @kriptosbtc")
     return "\n".join(lines)
 
 # =============== ANA DÖNGÜ ===============
@@ -269,7 +279,7 @@ def main():
                     "💬 Hisse kodunu (örnek: ASELS, THYAO) yaz.\n"
                     "📈 Fiyat, RSI, EMA, bilanço ve haber özetlerini getiririm.\n\n"
                     "🤖 Yapay zeka bilanço & haber özetlerini oluşturur.\n"
-                    "⚙️ Kaynaklar: TradingView, Google News, OpenAI, Yahoo Finance."
+                    "⚙️ Kaynaklar: TradingView, KAP, Google News, OpenAI, Yahoo Finance."
                 )
                 send_message(chat_id, msg)
                 continue
@@ -278,21 +288,18 @@ def main():
             reply = build_message(symbol)
             send_message(chat_id, reply)
             time.sleep(0.8)
+        if len(processed) > 4000:
+            processed = set(list(processed)[-1500:])
         time.sleep(0.5)
-
 
 # =============== FLASK (Render Portu) ===============
 app = Flask(__name__)
-
 @app.route('/')
 def home():
     return "✅ Bot aktif, Render portu açık!", 200
-
 def run():
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
-
 Thread(target=run).start()
-
 if __name__ == "__main__":
     main()
