@@ -11,6 +11,7 @@ from threading import Thread
 from PyPDF2 import PdfReader
 import openai
 import xml.etree.ElementTree as ET
+import pandas as pd
 
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -184,74 +185,41 @@ def combine_recommendation(ema_sig, rsi_label):
         return "SATIŞ"
     return "NÖTR"
 
-# =============== KAP JSON API + PDF + AI BİLANÇO ===============
-
-
-def extract_pdf_text(pdf_url):
-    """KAP PDF içeriğini indirip ilk 2 sayfasını metne çevirir."""
-    try:
-        r = requests.get(pdf_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
-        if r.status_code != 200 or not r.content:
-            print("PDF indirilemedi:", pdf_url, flush=True)
-            return ""
-        pdf = BytesIO(r.content)
-        reader = PdfReader(pdf)
-        text = ""
-        for page in reader.pages[:2]:
-            text += (page.extract_text() or "") + "\n"
-        return text.strip()[:4000]
-    except Exception as e:
-        print("PDF okuma hata:", e, flush=True)
-        return ""
+# =============== BİLANÇO (Bigpara + OpenAI) ===============
 
 def get_balance_summary(symbol):
-    """KAP JSON API üzerinden son finansal raporu bulur ve AI bilanço özetini döner."""
-    symbol = symbol.upper()
+    """
+    Bigpara bilanço sayfasından tabloyu çeker, AI ile kısa Türkçe özet üretir.
+    Örn: https://www.bigpara.com/finans/borsa/hisse-senedi/aselsan-asels/bilanco/
+    """
+    symbol = symbol.upper().strip()
     api_key = os.getenv("OPENAI_API_KEY")
-
     try:
-        # --- KAP JSON API'den firma duyurularını al ---
-        url = f"https://www.kap.org.tr/api/kaprest/api/v1/bildirim/firm?companyCode={symbol}"
-        print(f"KAP API sorgusu: {url}", flush=True)
-        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+        url = f"https://www.bigpara.com/finans/borsa/hisse-senedi/{symbol.lower()}-{symbol.lower()}/bilanco/"
+        print(f"📡 Bigpara isteği: {url}", flush=True)
 
-        if r.status_code != 200:
-            print(f"KAP API hata kodu: {r.status_code}", flush=True)
-            return {"summary": "⚠️ KAP verisine erişilemedi."}
+        # sayfadan tüm tabloları çek
+        tables = pd.read_html(url)
+        if not tables or len(tables[0]) == 0:
+            return {"summary": "⚠️ Bigpara bilanço verisi bulunamadı."}
 
-        data = r.json()
-        if not data or "data" not in data:
-            return {"summary": "⚠️ KAP API geçersiz yanıt döndü."}
+        df = tables[0]
+        # tabloyu temizle
+        df.columns = [str(c).strip() for c in df.columns]
+        df = df.dropna(how="all")
 
-        # --- Finansal / Bilanço duyurularını ara ---
-        bildirimler = data["data"]
-        finansal = None
-        for b in bildirimler:
-            title = (b.get("title") or "").upper()
-            if any(x in title for x in ["FİNANSAL", "BİLANÇO", "MALİ TABLO", "UFRS"]):
-                finansal = b
-                break
-
-        if not finansal:
-            return {"summary": "⚠️ Şirketin son finansal bildirimi bulunamadı."}
-
-        pdf_url = "https://www.kap.org.tr" + finansal.get("pdfLink", "")
-        print(f"📎 PDF bulundu: {pdf_url}", flush=True)
-
-        # --- PDF indir & metin çıkar ---
-        text = extract_pdf_text(pdf_url)
-        if not text:
-            return {"summary": f"⚠️ PDF okunamadı: <a href='{pdf_url}'>KAP PDF</a>"}
-
-        # --- OpenAI özet isteği ---
+        # metin hale getir
+        text = df.to_string(index=False)
         prompt = f"""
-Aşağıda {symbol} hissesinin KAP'ta yayımlanmış finansal raporu yer alıyor.
-Bu metni analiz et ve 3-4 cümlelik kısa, güncel bir Türkçe bilanço özeti oluştur.
-Net kâr, ciro, borç/özsermaye gibi temel finansal detayları vurgula.
-Yatırım tavsiyesi verme.
+Aşağıda {symbol} hissesinin bilanço verileri yer alıyor:
+{text}
 
-{text[:3500]}
+Bu verileri analiz et ve 3-4 cümlelik kısa, sade bir Türkçe bilanço özeti oluştur.
+Net kâr, ciro, borç, özkaynak gibi finansal kalemlerden bahset.
+Yatırım tavsiyesi verme.
 """
+
+        # AI özet
         resp = requests.post(
             "https://api.openai.com/v1/chat/completions",
             headers={
@@ -261,22 +229,23 @@ Yatırım tavsiyesi verme.
             json={
                 "model": "gpt-4o-mini",
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 220,
-                "temperature": 0.5,
+                "max_tokens": 200,
+                "temperature": 0.5
             },
             timeout=25,
         )
 
         if resp.status_code != 200:
-            print("AI hata:", resp.text, flush=True)
-            return {"summary": f"📎 <a href='{pdf_url}'>KAP PDF</a>\n⚠️ AI özet alınamadı."}
+            print("AI özet hata:", resp.text, flush=True)
+            return {"summary": "⚠️ AI özet alınamadı."}
 
         msg = (resp.json().get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
-        return {"summary": f"📎 <a href='{pdf_url}'>KAP PDF</a>\n🧾 {msg}"}
+        return {"summary": f"📊 Kaynak: Bigpara\n🧾 {msg}"}
 
     except Exception as e:
         print("get_balance_summary hata:", e, flush=True)
         return {"summary": "⚠️ Bilanço verisi alınamadı."}
+
 
 
 ## MESAJ OLUŞTURM A###
