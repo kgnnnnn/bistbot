@@ -393,7 +393,7 @@ def get_balance_summary(symbol: str):
     candidates = []
     for d in domains:
         candidates.extend(_fetch_gnews_items(sym, d))
-        if len(candidates) > 100:
+        if len(candidates) > 500:
             break
 
     picked = []
