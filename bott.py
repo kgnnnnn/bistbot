@@ -167,13 +167,9 @@ def get_tv_analysis(symbol):
 def map_rsi_label(rsi):
     try:
         r = float(rsi)
+        return round(r, 2)  # ✅ RSI değeri artık 2 ondalık basamakla gösteriliyor
     except:
         return "NÖTR"
-    if r <= 20: return "GÜÇLÜ AL"
-    if r <= 30: return "AL"
-    if r >= 85: return "GÜÇLÜ SAT"
-    if r >= 70: return "SAT"
-    return "NÖTR"
 
 def map_ema_signal(ema50, ema200):
     try:
@@ -190,56 +186,8 @@ def combine_recommendation(ema_sig, rsi_label):
 
 ### BILANCO OZET ###
 def get_balance_summary(symbol):
-    """Investing.com finansal özet sayfasından bilanço verisini özetler."""
-    import requests, re, os
-    from bs4 import BeautifulSoup
-    api_key = os.getenv("OPENAI_API_KEY")
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-
-    url = f"https://tr.investing.com/equities/{symbol.lower()}-financial-summary"
-    try:
-        r = requests.get(url, headers=headers, timeout=15)
-        if r.status_code != 200:
-            return {"summary": f"⚠️ {symbol} bilanço sayfasına erişilemedi."}
-
-        soup = BeautifulSoup(r.text, "html.parser")
-        tables = soup.find_all("table")
-
-        if not tables:
-            return {"summary": "⚠️ Finansal tablo bulunamadı."}
-
-        table_text = " ".join([t.get_text(" ", strip=True) for t in tables[:1]])
-        prompt = f"""
-Aşağıda {symbol} hissesine ait Investing.com finansal tablo verisi yer alıyor:
-{table_text[:3500]}
-
-Bu verilere göre 3-4 cümlelik sade bir bilanço özeti yaz.
-Kâr, ciro, borç, özsermaye değişimlerinden bahset.
-Yatırım tavsiyesi verme.
-"""
-
-        ai = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={
-                "model": "gpt-4o-mini",
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 200,
-                "temperature": 0.4,
-            },
-            timeout=40,
-        )
-
-        if ai.status_code != 200:
-            return {"summary": "⚠️ AI bilanço özeti alınamadı."}
-
-        msg = ai.json()["choices"][0]["message"]["content"].strip()
-        return {"summary": f"🧾 {msg}"}
-
-    except Exception as e:
-        print("Hata:", e)
-        return {"summary": "⚠️ Bilanço verisi alınamadı."}
-
+    """Şimdilik pasif: bilanço özeti yakında eklenecek."""
+    return {"summary": "🤖 <b>Kriptos AI:</b> ÇOK YAKINDA"}
 
 ##-------------------------MESAJ OLUŞTURMA-------------------------##
 def build_message(symbol):
@@ -268,7 +216,7 @@ def build_message(symbol):
         ema_sig = map_ema_signal(ema50, ema200)
         overall = combine_recommendation(ema_sig, rsi_label)
         lines.append("\n📊 <b>Teknik Analiz</b>")
-        lines.append(f"⚡ RSI: {rsi_val} ({rsi_label})")
+        lines.append(f"⚡ RSI: {rsi_label}")
         lines.append(f"🔄 EMA(50/200): {ema_sig}")
         lines.append(f"🤖 <b>Kriptos AI:</b> {overall}")
 
@@ -276,8 +224,7 @@ def build_message(symbol):
     fin = get_balance_summary(symbol)
     if fin and fin.get("summary"):
         lines.append("\n🏦 <b>Bilanço Özeti</b>")
-        lines.append("🤖 <b>Kriptos AI:</b>")
-        lines.append(f"🧾 {fin['summary']}")
+        lines.append(fin["summary"])
 
     # --- Haberler ---
     news_text = get_news(symbol)
@@ -335,18 +282,6 @@ app = Flask(__name__)
 @app.route('/')
 def home():
     return "✅ Bot aktif, Render portu açık!", 200
-
-# Basit proxy endpoint
-@app.route('/fetch')
-def fetch():
-    url = request.args.get("url")
-    if not url:
-        return "url parametresi gerekli", 400
-    try:
-        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
-        return r.text, r.status_code
-    except Exception as e:
-        return f"Hata: {e}", 500
 
 def run():
     port = int(os.environ.get("PORT", 8080))
