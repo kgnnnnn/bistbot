@@ -220,7 +220,7 @@ BAL_NEWS_DOMAINS = [
     "patronlardunyasi.com",
     "haberturk.com",
 ]
-# İstenmeyen/çakışan semboller (ASELS istenirken HEKTS gibi) — gerekirse genişlet
+
 COMMON_TICKERS = [
     "ASELS","HEKTS","SASA","EREGL","THYAO","BIMAS","TUPRS","YKBNK","AKBNK","GARAN",
     "KRDMD","KCHOL","SISE","PETKM","TOASO","SAHOL","TCELL","PGSUS","VESTL","KOZAL",
@@ -234,12 +234,15 @@ FIN_KEYWORDS_NEAR = {
     "equity":     ["özsermaye", "özkaynak", "öz kaynak", "equity"],
     "ebitda":     ["ebitda"],
 }
-FIN_KEYWORDS_REQUIRED = [  # haberi kabul etmek için başlık/HTML’de en az biri geçmeli
-    "bilanço", "bilanco", "finansal sonuç", "finansal sonuçlar",
-    "net kâr", "net kar", "ciro", "gelir", "zarar", "özsermaye", "özkaynak", "borç", "ebitda"
+
+# haberin kabul edilmesi için bu kelimelerden en az biri başlık veya içerikte geçmeli
+FIN_KEYWORDS_REQUIRED = [
+    "bilanço", "bilanco", "finansal sonuç", "finansal sonuçlar", "finansal", "faaliyet raporu",
+    "net kâr", "net kar", "ciro", "gelir", "zarar", "özsermaye", "özkaynak", "borç",
+    "ebitda", "çeyrek", "dönemsel sonuç", "3. çeyrek", "4. çeyrek"
 ]
 
-NEARBY_WINDOW = 120  # keyword ile sayı arasındaki max karakter
+NEARBY_WINDOW = 120
 
 UNIT_MAP = {
     "milyar": 1_000_000_000,
@@ -266,21 +269,17 @@ def _safe_get(url: str) -> str:
         return ""
 
 def _contains_2025_in_any(title: str, url: str, html_text: str) -> bool:
-    t = (title or "")
-    u = (url or "")
-    h = (html_text or "")
-    return ("2025" in t) or ("2025" in u) or ("2025" in h)
+    return any("2025" in s for s in [title or "", url or "", html_text or ""])
 
-def _within_last_60_days(pub: str) -> bool:
+def _within_last_100_days(pub: str) -> bool:
     if not pub:
         return True
     try:
-        # RSS tipik: Wed, 23 Oct 2025 12:34:56 +0300
         try:
             dt = datetime.strptime(pub, "%a, %d %b %Y %H:%M:%S %z").replace(tzinfo=None)
         except Exception:
             dt = datetime.strptime(pub.split("+")[0].strip(), "%a, %d %b %Y %H:%M:%S").replace(tzinfo=None)
-        return dt >= (datetime.now() - timedelta(days=60))
+        return dt >= (datetime.now() - timedelta(days=100))
     except Exception:
         return True
 
@@ -321,47 +320,33 @@ def _extract_numbers_near_keywords(text, keywords_map):
     return res
 
 def _has_required_fin_keyword(title: str, html_text: str) -> bool:
-    t = (title or "").lower()
-    h = (html_text or "").lower()
-    return any(k in t or k in h for k in FIN_KEYWORDS_REQUIRED)
+    low = (title + " " + html_text).lower()
+    return any(k in low for k in FIN_KEYWORDS_REQUIRED)
 
 def _belongs_to_symbol(symbol: str, title: str, url: str, html_text: str) -> bool:
-    """
-    Sembol (örn ASELS) başlık/URL/HTML metninde zorunlu olsun.
-    Ayrıca başka bir majör sembol güçlü şekilde geçerse elemeye çalış.
-    """
     s = (symbol or "").upper()
-    joined_up = " ".join([title or "", url or "", html_text or ""]).upper()
-    if s not in joined_up:
+    joined = " ".join([title or "", url or "", html_text or ""]).upper()
+    if s not in joined:
         return False
-    # Diğer semboller aynı metinde çok baskınsa ele (gerekiyorsa)
     for tk in COMMON_TICKERS:
         if tk == s:
             continue
-        # eğer başka sembol 2+ kez geçiyorsa ele
-        if joined_up.count(tk) >= 2:
+        if joined.count(tk) >= 2:
             return False
     return True
 
 def _fetch_gnews_items(symbol: str, domain: str):
-    """
-    Google News RSS — cache-busting parametreleriyle, site:domain odaklı.
-    """
-    ts = int(time.time())
-    query = f'{symbol} ({ " OR ".join([quote(k) for k in ["bilanço","net kâr","net kar","ciro","gelir","zarar","finansal sonuç"]]) }) site:{domain}'
-    url = (
-        "https://news.google.com/rss/search?"
-        f"q={quote(query)}&hl=tr&gl=TR&ceid=TR:tr&t={ts}&nocache={random.randint(10_000, 9_999_999)}"
-    )
+    ts = int(time.time() * 1000)
+    query = f'{symbol} ("bilanço" OR "net kâr" OR "net kar" OR "ciro" OR "gelir" OR "zarar" OR "finansal sonuç" OR "faaliyet raporu" OR "çeyrek") site:{domain}'
+    url = f"https://news.google.com/rss/search?q={quote(query)}&hl=tr&gl=TR&ceid=TR:tr&t={ts}&nocache={random.randint(10000,9999999)}"
     try:
         r = requests.get(url, timeout=12)
         if r.status_code != 200:
             return []
         raw = r.text.encode("utf-8", "ignore").decode("utf-8", "ignore").replace("&", "&amp;")
         root = ET.fromstring(raw)
-        items = root.findall(".//item")
         out = []
-        for it in items:
+        for it in root.findall(".//item"):
             title = (it.find("title").text or "").strip()
             link = (it.find("link").text or "").strip()
             pub = (it.find("pubDate").text or "").strip() if it.find("pubDate") is not None else ""
@@ -372,8 +357,6 @@ def _fetch_gnews_items(symbol: str, domain: str):
         return []
 
 def _format_human(val):
-    if val is None:
-        return None
     v = float(val)
     if v >= 1_000_000_000:
         return f"{round(v/1_000_000_000,2)} milyar TL"
@@ -385,14 +368,15 @@ def _format_human(val):
 
 def get_balance_summary(symbol: str):
     """
-    Çok-kaynaklı finans haberlerinden (Google News + site:domain) 2025 ve 60g filtresiyle
+    Çok-kaynaklı finans haberlerinden (Google News + site:domain) 
+    2025 veya son 100g filtresiyle
     net kâr/ciro/borç/özsermaye/EBITDA değerlerini çıkarmaya çalışır.
     """
     sym = (symbol or "").strip().upper()
     if not sym:
         return {"summary": "📄 Geçersiz hisse kodu."}
 
-    # 1) Aday haberleri topla
+    # 1️⃣ Haber adaylarını topla
     domains = list(BAL_NEWS_DOMAINS)
     random.shuffle(domains)
     candidates = []
@@ -400,15 +384,13 @@ def get_balance_summary(symbol: str):
         items = _fetch_gnews_items(sym, d)
         if items:
             candidates.extend(items)
-        if len(candidates) > 60:
+        if len(candidates) > 100:
             break
 
-    # 2) Sıkı filtreleme + HTML çekip alan çıkarımı
+    # 2️⃣ Filtrele + HTML analiz
     picked = []
-    cutoff = datetime.now() - timedelta(days=60)
     for it in candidates:
         title, link, pub = it["title"], it["link"], it["pub"]
-
         if not link.startswith("http"):
             continue
 
@@ -416,38 +398,39 @@ def get_balance_summary(symbol: str):
         if not html_text:
             continue
 
-        # 2025 zorunlu
-        if not _contains_2025_in_any(title, link, html_text):
+        has_2025 = _contains_2025_in_any(title, link, html_text)
+        recent = _within_last_100_days(pub)
+        if not has_2025 and not recent:
             continue
 
-        # 60 gün (mümkünse)
-        if not _within_last_60_days(pub):
-            continue
-
-        # finans anahtarları zorunlu
         if not _has_required_fin_keyword(title, html_text):
             continue
 
-        # doğru sembol zorunlu (ASELS vs)
         if not _belongs_to_symbol(sym, title, link, html_text):
             continue
 
-        # sayıları çıkar
-        # HTML -> düz metin (çok kaba)
         plain = re.sub(r"<[^>]+>", " ", html_text)
         numbers = _extract_numbers_near_keywords(plain, FIN_KEYWORDS_NEAR)
 
         picked.append({
-            "title": title, "link": link, "pub": pub, "domain": it["domain"], "numbers": numbers
+            "title": title,
+            "link": link,
+            "pub": pub,
+            "domain": it["domain"],
+            "numbers": numbers,
+            "priority": (1 if has_2025 else 0)
         })
 
         if len(picked) >= 5:
             break
 
     if not picked:
-        return {"summary": "📰 Son 60 günde 2025 tarihli, ilgili bilanço haberi bulunamadı."}
+        return {"summary": "📰 Son 100 günde güncel finansal haber bulunamadı."}
 
-    # 3) Alan başına en iyi değeri seç (en sık tekrarlanan)
+    # 3️⃣ 2025 geçenleri öncele
+    picked.sort(key=lambda x: x["priority"], reverse=True)
+
+    # 4️⃣ alan bazında değer seçimi
     agg = {k: [] for k in FIN_KEYWORDS_NEAR}
     for p in picked:
         for fld, vals in p["numbers"].items():
@@ -465,7 +448,7 @@ def get_balance_summary(symbol: str):
         best_key = max(counts.items(), key=lambda x: (x[1], x[0]))[0]
         final[fld] = best_key
 
-    # 4) İnsan okunur özet
+    # 5️⃣ insan okunur özet
     parts = []
     if final.get("net_income") is not None:
         parts.append(f"💸 Net kâr: {_format_human(final['net_income'])}")
@@ -478,12 +461,10 @@ def get_balance_summary(symbol: str):
     if final.get("debt") is not None:
         parts.append(f"💳 Toplam Borç: {_format_human(final['debt'])}")
 
-    if not parts:
-        summary = "📰 Haberlerden net bilanço rakamı seçilemedi."
-    else:
-        summary = "🤖 <b>Bilanço Özeti (haber tabanlı)</b>\n" + "\n".join(parts)
+    summary = "📰 Haberlerden net bilanço rakamı seçilemedi." if not parts else \
+               "🤖 <b>Bilanço Özeti (haber tabanlı)</b>\n" + "\n".join(parts)
 
-    # 5) Kaynaklar (ilk 3)
+    # 6️⃣ kaynaklar
     lines = [summary, "\n🔗 <b>Kaynaklar</b>"]
     for p in picked[:3]:
         pub = p["pub"].split("+")[0].strip() if p["pub"] else ""
