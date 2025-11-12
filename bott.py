@@ -4,7 +4,6 @@ import os
 import re
 import requests
 import yfinance as yf
-import feedparser
 from io import BytesIO
 from flask import Flask
 from threading import Thread
