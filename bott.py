@@ -189,46 +189,66 @@ def combine_recommendation(ema_sig, rsi_label):
     return "NÖTR"
 
 ### BILANCO OZET ###
-from bs4 import BeautifulSoup
-from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
-import requests, re, os
+from datetime import datetime
+import requests, os, re
 
 def get_balance_summary(symbol):
-    """İş Yatırım finansal tablo API'sinden en güncel bilanço verisini özetler."""
+    """İş Yatırım finansal tablo API'sinden en güncel bilanço verisini özetler (proxy destekli)."""
     symbol = symbol.upper().strip()
     api_key = os.getenv("OPENAI_API_KEY")
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
-    try:
-        # 🔹 Resmî JSON endpoint – tarih parametreleri dinamik
-        start_date = "2024-01-01"
-        end_date = datetime.now().strftime("%Y-%m-%d")
-        url = (
-            "https://www.isyatirim.com.tr/_Layouts/15/IsYatirim.Website/Common/"
-            f"Data.aspx/GetFinancialTable?companyCode={symbol}"
-            f"&startdate={start_date}&enddate={end_date}"
-        )
+    # 🔹 Tarihler
+    start_date = "2024-01-01"
+    end_date = datetime.now().strftime("%Y-%m-%d")
+    url = (
+        "https://www.isyatirim.com.tr/_Layouts/15/IsYatirim.Website/Common/"
+        f"Data.aspx/GetFinancialTable?companyCode={symbol}"
+        f"&startdate={start_date}&enddate={end_date}"
+    )
 
+    try:
+        # --- 1️⃣ Önce doğrudan dene
         r = requests.get(url, headers=headers, timeout=15)
         if r.status_code != 200:
-            return {"summary": "⚠️ İş Yatırım API erişim hatası."}
+            print("İş Yatırım erişimi başarısız:", r.status_code)
+            raise Exception("Doğrudan erişim başarısız")
 
+    except Exception:
+        # --- 2️⃣ Proxy fallback
+        proxy_base = os.getenv("PROXY_URL")  # örn: https://seninappadi.onrender.com/fetch
+        if not proxy_base:
+            return {"summary": "⚠️ İş Yatırım API erişim hatası. (Proxy URL tanımlı değil)"}
+        proxy_url = f"{proxy_base}?url={url}"
+        print("Proxy üzerinden deneniyor:", proxy_url)
+        try:
+            r = requests.get(proxy_url, headers=headers, timeout=25)
+            if r.status_code != 200:
+                return {"summary": "⚠️ Proxy de erişemedi."}
+        except Exception as e:
+            print("Proxy hata:", e)
+            return {"summary": "⚠️ Proxy erişimi başarısız."}
+
+    # --- JSON parse ---
+    try:
         data = r.json()
-        if "data" not in data or not data["data"]:
-            return {"summary": "⚠️ Güncel bilanço verisi bulunamadı."}
+    except Exception:
+        return {"summary": "⚠️ JSON parse hatası veya geçersiz yanıt."}
 
-        # 🔍 En son dönem kaydını al
-        latest = data["data"][0]
-        yil = latest.get("Yil", "")
-        donem = latest.get("Donem", "")
-        net_kar = latest.get("NetKar", "")
-        ciro = latest.get("Satislar", "") or latest.get("NetSatislar", "")
-        ozsermaye = latest.get("Ozkaynaklar", "")
-        borc = latest.get("KisaVadeliYukumlulukler", "")
+    if "data" not in data or not data["data"]:
+        return {"summary": "⚠️ Güncel bilanço verisi bulunamadı."}
 
-        # --- OpenAI özet ---
-        prompt = f"""
+    # 🔍 En son dönem kaydı
+    latest = data["data"][0]
+    yil = latest.get("Yil", "")
+    donem = latest.get("Donem", "")
+    net_kar = latest.get("NetKar", "")
+    ciro = latest.get("Satislar", "") or latest.get("NetSatislar", "")
+    ozsermaye = latest.get("Ozkaynaklar", "")
+    borc = latest.get("KisaVadeliYukumlulukler", "")
+
+    # --- OpenAI özet ---
+    prompt = f"""
 Aşağıda {symbol} hissesine ait {yil} {donem} dönemi finansal verileri yer alıyor:
 Net Kar: {net_kar}
 Ciro: {ciro}
@@ -239,6 +259,7 @@ Bu verilere dayanarak 3-4 cümlelik sade, net ve genel bir bilanço özeti yaz.
 Yatırım tavsiyesi verme.
 """
 
+    try:
         resp = requests.post(
             "https://api.openai.com/v1/chat/completions",
             headers={
@@ -255,14 +276,15 @@ Yatırım tavsiyesi verme.
         )
 
         if resp.status_code != 200:
+            print("AI hata:", resp.text[:200])
             return {"summary": "⚠️ AI bilanço özeti alınamadı."}
 
         msg = resp.json()["choices"][0]["message"]["content"].strip()
         return {"summary": f"🧾 {msg}"}
 
     except Exception as e:
-        print("Hata:", e)
-        return {"summary": "⚠️ Bilanço verisi alınamadı."}
+        print("AI özet hata:", e)
+        return {"summary": "⚠️ AI bilanço özeti alınamadı."}
 
 
 
@@ -360,6 +382,18 @@ app = Flask(__name__)
 @app.route('/')
 def home():
     return "✅ Bot aktif, Render portu açık!", 200
+
+# Basit proxy endpoint
+@app.route('/fetch')
+def fetch():
+    url = request.args.get("url")
+    if not url:
+        return "url parametresi gerekli", 400
+    try:
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+        return r.text, r.status_code
+    except Exception as e:
+        return f"Hata: {e}", 500
 
 def run():
     port = int(os.environ.get("PORT", 8080))
