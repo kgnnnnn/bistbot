@@ -199,41 +199,44 @@ def get_tv_analysis(symbol):
 # =============== YFINANCE BİLANÇO ÖZETİ (Temel Finansallar) ===============
 
 
+# =============== KAP.GOV.TR BİLANÇO ÖZETİ (Temel Finansallar) ===============
 def get_balance_summary(symbol):
-    """Fintables üzerinden bilanço özeti (Net Kâr, Ciro, Özsermaye, Borç, Kâr Marjı)."""
+    """
+    KAP.gov.tr üzerinden son açıklanan finansal tabloyu çeker.
+    Dönen veriler: Net Kâr, Ciro, Özsermaye, Borç Oranı, Kâr Marjı
+    """
     try:
-        url = f"https://fintables.com/stock/{symbol.upper()}"
-        r = requests.get(url, timeout=10)
+        symbol = symbol.upper().strip()
+        base_url = "https://www.kap.org.tr/tr/api/company-financial-table"
+        params = {
+            "companyCode": symbol,
+            "period": "Q",   # Çeyrek bazlı veriler
+            "year": "2025"   # Dilersen dinamik yapılabilir
+        }
+
+        r = requests.get(base_url, params=params, timeout=10)
         if r.status_code != 200:
-            print("⚠️ Fintables bağlantı hatası:", r.status_code, flush=True)
+            print(f"❌ KAP API hatası ({r.status_code})", flush=True)
             return None
 
-        # Sayfa içindeki JS verisini yakala
-        match = re.search(r"window\.__DATA__\s*=\s*(\{.*?\});", r.text)
-        if not match:
-            print("⚠️ Fintables veri bulunamadı.", flush=True)
+        data = r.json()
+        if not isinstance(data, dict) or "financialTableList" not in data:
+            print("⚠️ Beklenen formatta veri yok veya şirket bulunamadı", flush=True)
             return None
 
-        data = json.loads(match.group(1))
-        fin = data.get("financials", {}).get("income_statement", [])
-        if not fin:
-            print("⚠️ Fintables finansal veri boş.", flush=True)
-            return None
+        table = data["financialTableList"][0]
 
-        # En güncel çeyrek
-        latest = fin[0]
-        period = latest.get("period") or "Bilinmiyor"
+        # Ana kalemler
+        net_kar = float(table.get("donem_net_kari_zarari", 0) or 0)
+        ciro = float(table.get("net_satislar", 0) or 0)
+        ozsermaye = float(table.get("ozsermaye_toplami", 0) or 0)
+        borc = float(table.get("kisa_vadeli_borclar", 0) or 0) + float(table.get("uzun_vadeli_borclar", 0) or 0)
 
-        net_kar = latest.get("net_profit")
-        ciro = latest.get("revenue")
-        ozsermaye = latest.get("equity")
-        borc = latest.get("liabilities")
-
-        borc_orani = (borc / ozsermaye * 100) if borc and ozsermaye else None
-        kar_marji = (net_kar / ciro * 100) if net_kar and ciro else None
+        borc_orani = (borc / ozsermaye * 100) if ozsermaye else None
+        kar_marji = (net_kar / ciro * 100) if ciro else None
 
         return {
-            "period": period,
+            "period": table.get("donem", "—"),
             "net_kar": net_kar,
             "ciro": ciro,
             "ozsermaye": ozsermaye,
@@ -242,7 +245,7 @@ def get_balance_summary(symbol):
         }
 
     except Exception as e:
-        print("⚠️ Fintables hata:", e, flush=True)
+        print("📉 KAP bağlantı hatası:", e, flush=True)
         return None
 
 
