@@ -111,7 +111,7 @@ def get_tv_price(symbol):
         r = requests.get(
             "https://tradingview-real-time.p.rapidapi.com/price",
             headers=TV_HEADERS,
-            params={"symbol": symbol.upper()},
+            params={"query": symbol.upper()},  # ✅ symbol → query olarak düzeltildi
             timeout=8,
         )
         data = r.json().get("data", {})
@@ -128,6 +128,7 @@ def get_tv_price(symbol):
         print("get_tv_price hata:", e, flush=True)
         return None
 
+
 def get_tv_analysis(symbol):
     try:
         r = requests.get(
@@ -137,10 +138,15 @@ def get_tv_analysis(symbol):
             timeout=8,
         )
         data = r.json().get("data", {})
-        return {"rsi": data.get("RSI"), "ema50": data.get("EMA50"), "ema200": data.get("EMA200")}
+        return {
+            "rsi": data.get("RSI"),
+            "ema50": data.get("EMA50"),
+            "ema200": data.get("EMA200"),
+        }
     except Exception as e:
         print("get_tv_analysis hata:", e, flush=True)
         return None
+
 
 def map_rsi_label(rsi):
     try:
@@ -153,11 +159,13 @@ def map_rsi_label(rsi):
     if r >= 70: return "SAT"
     return "NÖTR"
 
+
 def map_ema_signal(ema50, ema200):
     try:
         return "AL" if float(ema50) >= float(ema200) else "SAT"
     except:
         return "NÖTR"
+
 
 def combine_recommendation(ema_sig, rsi_label):
     if ema_sig == "AL" and rsi_label in ("AL", "GÜÇLÜ AL"):
@@ -165,6 +173,7 @@ def combine_recommendation(ema_sig, rsi_label):
     if ema_sig == "SAT" and rsi_label in ("SAT", "GÜÇLÜ SAT"):
         return "SATIŞ"
     return "NÖTR"
+
 
 # =============== YAHOO SADE (Piyasa Değeri & Hacim) ===============
 def get_price(symbol):
