@@ -6,3 +6,4 @@ beautifulsoup4
 html5lib
 pandas
 lxml
+PyPDF2
