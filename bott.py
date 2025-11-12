@@ -2,6 +2,7 @@ import time, random, os, requests, yfinance as yf
 from flask import Flask
 from threading import Thread
 import openai
+import re, json
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 print("DEBUG OPENAI KEY:", openai.api_key[:10] if openai.api_key else "YOK", flush=True)
@@ -196,44 +197,43 @@ def get_tv_analysis(symbol):
 
 
 # =============== YFINANCE BİLANÇO ÖZETİ (Temel Finansallar) ===============
-def get_balance_summary(symbol):
-    """Yahoo Finance üzerinden son çeyrek finansal özet (Net Kâr, Ciro, Özsermaye, Borç, Kâr Marjı)."""
-    try:
-        ticker = yf.Ticker(symbol.upper() + ".IS")
-        fin = ticker.quarterly_financials
-        bs = ticker.quarterly_balance_sheet
 
-        if fin.empty or bs.empty:
+
+def get_balance_summary(symbol):
+    """Fintables üzerinden bilanço özeti (Net Kâr, Ciro, Özsermaye, Borç, Kâr Marjı)."""
+    try:
+        url = f"https://fintables.com/stock/{symbol.upper()}"
+        r = requests.get(url, timeout=10)
+        if r.status_code != 200:
+            print("⚠️ Fintables bağlantı hatası:", r.status_code, flush=True)
             return None
 
-        last_col = fin.columns[0]
-        net_kar = fin.loc["Net Income"][last_col] if "Net Income" in fin.index else None
-        ciro = fin.loc["Total Revenue"][last_col] if "Total Revenue" in fin.index else None
-        ozsermaye = bs.loc["Total Stockholder Equity"][last_col] if "Total Stockholder Equity" in bs.index else None
-        borc = bs.loc["Total Liab"][last_col] if "Total Liab" in bs.index else None
+        # Sayfa içindeki JS verisini yakala
+        match = re.search(r"window\.__DATA__\s*=\s*(\{.*?\});", r.text)
+        if not match:
+            print("⚠️ Fintables veri bulunamadı.", flush=True)
+            return None
+
+        data = json.loads(match.group(1))
+        fin = data.get("financials", {}).get("income_statement", [])
+        if not fin:
+            print("⚠️ Fintables finansal veri boş.", flush=True)
+            return None
+
+        # En güncel çeyrek
+        latest = fin[0]
+        period = latest.get("period") or "Bilinmiyor"
+
+        net_kar = latest.get("net_profit")
+        ciro = latest.get("revenue")
+        ozsermaye = latest.get("equity")
+        borc = latest.get("liabilities")
 
         borc_orani = (borc / ozsermaye * 100) if borc and ozsermaye else None
         kar_marji = (net_kar / ciro * 100) if net_kar and ciro else None
 
-        # --- Tarih formatı ve çeyrek hesaplama ---
-        if hasattr(last_col, "strftime"):
-            tarih = last_col.strftime("%d/%m/%Y")  # Türk tarih formatı
-            ay = int(last_col.strftime("%m"))
-            yil = int(last_col.strftime("%Y"))
-            if 1 <= ay <= 3:
-                ceyrek = "1. Çeyrek"
-            elif 4 <= ay <= 6:
-                ceyrek = "2. Çeyrek"
-            elif 7 <= ay <= 9:
-                ceyrek = "3. Çeyrek"
-            else:
-                ceyrek = "4. Çeyrek"
-            period_text = f"{yil} {ceyrek} ({tarih})"
-        else:
-            period_text = str(last_col)
-
         return {
-            "period": period_text,
+            "period": period,
             "net_kar": net_kar,
             "ciro": ciro,
             "ozsermaye": ozsermaye,
@@ -242,8 +242,9 @@ def get_balance_summary(symbol):
         }
 
     except Exception as e:
-        print("Finansal veri hatası:", e)
+        print("⚠️ Fintables hata:", e, flush=True)
         return None
+
 
 # =============== MESAJ OLUŞTURMA ===============
 def build_message(symbol):
