@@ -264,8 +264,10 @@ def build_message(symbol):
             lines.append(f"🏢 Piyasa Değeri: {info['piyasa']}")
         if info.get("fk") or info.get("pddd"):
             fkpd = []
-            if info.get("fk"): fkpd.append(f"📗 F/K: {info['fk']}")
-            if info.get("pddd"): fkpd.append(f"📘 PD/DD: {info['pddd']}")
+            if info.get("fk"):
+                fkpd.append(f"📗 F/K: {info['fk']}")
+            if info.get("pddd"):
+                fkpd.append(f"📘 PD/DD: {info['pddd']}")
             lines.append(" | ".join(fkpd))
 
     # --- Teknik Analiz ---
@@ -276,10 +278,11 @@ def build_message(symbol):
         rsi_label = map_rsi_label(rsi_val)
         ema_sig = map_ema_signal(ema50, ema200)
         overall = combine_recommendation(ema_sig, rsi_label)
+
         lines.append("\n\n📊 <b>Teknik Analiz</b>")
         lines.append(f"⚡ RSI: {rsi_val} ({rsi_label})")
         lines.append(f"🔄 EMA(50/200): {ema_sig}")
-        lines.append(f"🤖 Kriptos AI: {overall}")
+        lines.append(f"🤖 <b>Kriptos AI:</b> {overall}")
     else:
         lines.append("\n\n📊 Teknik analiz verisi alınamadı.")
 
@@ -287,8 +290,8 @@ def build_message(symbol):
     fin = get_balance_summary(symbol)
     if fin:
         lines.append("\n\n🏦 <b>Bilanço Özeti</b>")
-        lines.append(f"📅 Dönem: {fin.get('period', '-')}")
         if fin.get("summary"):
+            lines.append(f"🤖 <b>Kriptos AI:</b>")
             lines.append(f"🧾 {fin['summary']}")
 
     # --- Haberler ---
@@ -302,9 +305,11 @@ def build_message(symbol):
     # --- Kaynak & Görüş ---
     if info and info.get("url"):
         lines.append(f"\n\n📎 <a href='{info['url']}'>Kaynak: Yahoo Finance</a>")
+
     lines.append("\n\n<b>💬 Görüş & Öneri:</b> @kriptosbtc")
 
     return "\n".join(lines)
+
 
 # =============== ANA DÖNGÜ ===============
 def main():
