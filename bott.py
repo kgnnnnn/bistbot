@@ -239,77 +239,84 @@ def _pick(df, patterns):
                     return None
             return None
 
+import os, math
+from isyatirimhisse import fetch_financials
+
 def get_balance_summary(symbol: str):
     """
-    yfinance YOK. İş Yatırım kaynaklı finansalları çeker.
-    Dönem, Net Kâr, Ciro, Özsermaye, Borç/Özsermaye, Kâr marjı hesaplar.
+    İş Yatırım verisinden bilanço/gelir tablosu özetini çeker.
+    Otomatik olarak uygun financial_group'u bulur.
     """
-    try:
-        # UFRS (financial_group='2') tercih ettim; TRY bazlı çekiyoruz
-        df = fetch_financials(
-            symbols=symbol.upper(),
-            start_year=2022,  # çok geriye gitmeye gerek yok
-            end_year=2100,
-            exchange="TRY",
-            financial_group="2"  # '1': XI_29, '2': UFRS, '3': UFRS_K
+    groups = ["3", "2", "1"]  # sırayla dene: UFRS_K, UFRS, XI_29
+    for g in groups:
+        try:
+            df = fetch_financials(
+                symbols=symbol.upper(),
+                start_year=2015,
+                end_year=2100,
+                exchange="TRY",
+                financial_group=g
+            )
+            if df is not None and len(df) > 0:
+                break
+        except Exception:
+            df = None
+    if df is None or len(df) == 0:
+        print(f"⚠️ İş Yatırım: {symbol} için veri bulunamadı.")
+        return {"period": "—", "summary": "⚠️ Finansal tablo bulunamadı."}
+
+    # --- En son dönemi bul ---
+    period_col = "Period" if "Period" in df.columns else (
+        "period" if "period" in df.columns else None
+    )
+    if period_col:
+        last_period = sorted(df[period_col].dropna().unique())[-1]
+        period_text = str(last_period)
+        dfl = df[df[period_col] == last_period].copy()
+    else:
+        period_text = "Son dönem"
+        dfl = df.copy()
+
+    # Yardımcı fonksiyon
+    def pick(patterns):
+        name_col = "Kalem" if "Kalem" in dfl.columns else "item"
+        if name_col not in dfl.columns:
+            return None
+        import re
+        mask = False
+        for p in patterns:
+            mask = mask | dfl[name_col].str.contains(p, case=False, regex=True, na=False)
+        sub = dfl[mask]
+        if sub.empty:
+            return None
+        val_col = "Value" if "Value" in dfl.columns else (
+            "value" if "value" in dfl.columns else dfl.columns[-1]
         )
-        if df is None or len(df) == 0:
-            return {"period": "—", "summary": "⚠️ Finansal tablo bulunamadı."}
+        val = sub.iloc[0][val_col]
+        try:
+            return float(str(val).replace(".", "").replace(",", "."))
+        except:
+            return None
 
-        # Dönem metni: en yeni dönem ismini bul
-        period_col = 'Period' if 'Period' in df.columns else ('period' if 'period' in df.columns else None)
-        if period_col:
-            last_period = sorted(df[period_col].dropna().unique())[-1]
-            period_text = str(last_period)
-            dfl = df[df[period_col] == last_period].copy()
-        else:
-            # geniş form ise son dönem sütunu adı
-            meta_cols = ('Sembol','Symbol','Kalem','item','Grup','Group','Para','Currency')
-            period_cols = [c for c in df.columns if c not in meta_cols]
-            period_text = period_cols[-1] if period_cols else "Son dönem"
-            dfl = df.copy()
+    # --- Ana kalemleri seç ---
+    net_kar = pick([r"net.*k[âa]r", r"dönem k[âa]r"])
+    ciro = pick([r"sat[iı]ş", r"hasılat", r"ciro"])
+    ozsermaye = pick([r"özkaynak", r"ozsermay"])
+    borc = pick([r"toplam bor[cç]", r"y[uü]k[uü]ml[uü]l[uü]k"])
 
-        # Kalemleri çek
-        net_kar = _pick(dfl, [r"net.*k[aâ]r", r"kar", r"kâr", r"donem k[aâ]r", r"period profit"])
-        ciro    = _pick(dfl, [r"sat[iı]ş geliri", r"hasılat", r"ciro", r"revenue", r"sales"])
-        ozser   = _pick(dfl, [r"özkaynak", r"ozsermay", r"equity", r"shareholders.*equity"])
-        borc    = _pick(dfl, [r"toplam bor[cç]", r"y[uü]k[uü]ml[uü]l[uü]k", r"total liab", r"bor[çc]"])
+    # --- Oran hesapla ---
+    borc_orani = (borc / ozsermaye * 100) if (borc and ozsermaye) else None
+    kar_marji = (net_kar / ciro * 100) if (net_kar and ciro) else None
 
-        # oranlar
-        borc_orani = None
-        if (ozser or ozser == 0) and (borc or borc == 0):
-            try:
-                borc_orani = (float(borc)/float(ozser))*100 if float(ozser)!=0 else None
-            except Exception:
-                borc_orani = None
-
-        kar_marji = None
-        if (net_kar or net_kar == 0) and (ciro or ciro == 0):
-            try:
-                kar_marji = (float(net_kar)/float(ciro))*100 if float(ciro)!=0 else None
-            except Exception:
-                kar_marji = None
-
-        def bn(v):
-            if v is None or (isinstance(v, float) and (math.isnan(v) or math.isinf(v))):
-                return None
-            try:
-                return float(v)
-            except Exception:
-                return None
-
-        return {
-            "period": period_text,
-            "net_kar": bn(net_kar),
-            "ciro": bn(ciro),
-            "ozsermaye": bn(ozser),
-            "borc_orani": borc_orani,
-            "kar_marji": kar_marji,
-            "source": "İş Yatırım (isyatirimhisse)"
-        }
-    except Exception as e:
-        print("get_balance_summary (isyatirimhisse) hata:", e, flush=True)
-        return {"period": "—", "summary": "⚠️ Finansal tablo hatası."}
+    return {
+        "period": period_text,
+        "net_kar": net_kar,
+        "ciro": ciro,
+        "ozsermaye": ozsermaye,
+        "borc_orani": borc_orani,
+        "kar_marji": kar_marji,
+        "source": "İş Yatırım (isyatirimhisse)"
+    }
 
 # =============== MESAJ OLUŞTURMA ===============
 def build_message(symbol):
