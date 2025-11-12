@@ -188,55 +188,54 @@ def combine_recommendation(ema_sig, rsi_label):
         return "SATIŞ"
     return "NÖTR"
 
+### BILANCO OZET ###
 from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 import requests, re, os
 
 def get_balance_summary(symbol):
-    """Son 90 gün içinde İş Yatırım'dan alınan en güncel bilanço haberini özetler."""
+    """İş Yatırım finansal tablo API'sinden en güncel bilanço verisini özetler."""
     symbol = symbol.upper().strip()
     api_key = os.getenv("OPENAI_API_KEY")
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-    cutoff_date = datetime.now() - timedelta(days=90)
-    keywords = ["bilanço", "kâr", "zarar", "gelir", "ciro", "faaliyet"]
-
-    # 🔹 Sadece İş Yatırım
-    search_url = f"https://www.isyatirim.com.tr/tr-tr/analiz/hisse/Sayfalar/hisse-analiz.aspx?hisse={symbol}"
 
     try:
-        r = requests.get(search_url, headers=headers, timeout=10)
+        # 🔹 Resmî JSON endpoint – tarih parametreleri dinamik
+        start_date = "2024-01-01"
+        end_date = datetime.now().strftime("%Y-%m-%d")
+        url = (
+            "https://www.isyatirim.com.tr/_Layouts/15/IsYatirim.Website/Common/"
+            f"Data.aspx/GetFinancialTable?companyCode={symbol}"
+            f"&startdate={start_date}&enddate={end_date}"
+        )
+
+        r = requests.get(url, headers=headers, timeout=15)
         if r.status_code != 200:
-            return {"summary": "⚠️ İş Yatırım sayfasına erişilemedi."}
+            return {"summary": "⚠️ İş Yatırım API erişim hatası."}
 
-        soup = BeautifulSoup(r.text, "html.parser")
-        all_text = soup.get_text(" ", strip=True)
+        data = r.json()
+        if "data" not in data or not data["data"]:
+            return {"summary": "⚠️ Güncel bilanço verisi bulunamadı."}
 
-        # 🔍 Yıl filtresi (sadece 2025-2026)
-        if not any(y in all_text for y in ["2025", "2026"]):
-            return {"summary": "⚠️ Güncel (2025-2026) bilanço bilgisi bulunamadı."}
-
-        # 🔎 İçerikten anlamlı bölümleri çek
-        paragraphs = [
-            p.get_text(" ", strip=True)
-            for p in soup.find_all(["p", "div", "span"])
-            if len(p.get_text(strip=True)) > 100
-        ]
-        content = " ".join(paragraphs)
-        content = re.sub(r"\s+", " ", content)
-
-        # Filtreleme
-        if "bilanço" not in content.lower():
-            return {"summary": "⚠️ Bilanço bilgisi bulunamadı."}
+        # 🔍 En son dönem kaydını al
+        latest = data["data"][0]
+        yil = latest.get("Yil", "")
+        donem = latest.get("Donem", "")
+        net_kar = latest.get("NetKar", "")
+        ciro = latest.get("Satislar", "") or latest.get("NetSatislar", "")
+        ozsermaye = latest.get("Ozkaynaklar", "")
+        borc = latest.get("KisaVadeliYukumlulukler", "")
 
         # --- OpenAI özet ---
         prompt = f"""
-Aşağıda {symbol} hissesine ait İş Yatırım bilanço metni yer alıyor:
-{content[:4000]}
+Aşağıda {symbol} hissesine ait {yil} {donem} dönemi finansal verileri yer alıyor:
+Net Kar: {net_kar}
+Ciro: {ciro}
+Özsermaye: {ozsermaye}
+Borç: {borc}
 
-Bu içerikten yararlanarak 3-4 cümlelik sade ve net bir bilanço özeti oluştur.
-Net kâr, ciro, borç/özsermaye gibi değişimlere değin.
-Yıl veya çeyrek bilgisi yalnızca güncelse belirt.
+Bu verilere dayanarak 3-4 cümlelik sade, net ve genel bir bilanço özeti yaz.
 Yatırım tavsiyesi verme.
 """
 
@@ -249,8 +248,8 @@ Yatırım tavsiyesi verme.
             json={
                 "model": "gpt-4o-mini",
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 230,
-                "temperature": 0.5,
+                "max_tokens": 200,
+                "temperature": 0.4,
             },
             timeout=40,
         )
@@ -263,7 +262,8 @@ Yatırım tavsiyesi verme.
 
     except Exception as e:
         print("Hata:", e)
-        return {"summary": "⚠️ İş Yatırım bilanço verisi alınamadı."}
+        return {"summary": "⚠️ Bilanço verisi alınamadı."}
+
 
 
 ##-------------------------MESAJ OLUŞTURMA-------------------------##
