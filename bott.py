@@ -2,7 +2,7 @@ import time, random, os, requests, yfinance as yf
 from flask import Flask
 from threading import Thread
 import openai
-import re, json
+from bs4 import BeautifulSoup
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 print("DEBUG OPENAI KEY:", openai.api_key[:10] if openai.api_key else "YOK", flush=True)
@@ -199,54 +199,72 @@ def get_tv_analysis(symbol):
 # =============== YFINANCE BİLANÇO ÖZETİ (Temel Finansallar) ===============
 
 
-# =============== KAP.GOV.TR BİLANÇO ÖZETİ (Temel Finansallar) ===============
+from bs4 import BeautifulSoup
+
 def get_balance_summary(symbol):
     """
-    KAP.gov.tr üzerinden son açıklanan finansal tabloyu çeker.
-    Dönen veriler: Net Kâr, Ciro, Özsermaye, Borç Oranı, Kâr Marjı
+    Fintables.com'dan bilanço sayfasını alır, OpenAI ile okur ve özet döner.
     """
     try:
-        symbol = symbol.upper().strip()
-        base_url = "https://www.kap.org.tr/tr/api/company-financial-table"
-        params = {
-            "companyCode": symbol,
-            "period": "Q",   # Çeyrek bazlı veriler
-            "year": "2025"   # Dilersen dinamik yapılabilir
-        }
-
-        r = requests.get(base_url, params=params, timeout=10)
+        base_url = f"https://fintables.com/sirket/{symbol.lower()}-bilanco"
+        print(f"🌐 Fintables sorgusu: {base_url}", flush=True)
+        r = requests.get(base_url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
         if r.status_code != 200:
-            print(f"❌ KAP API hatası ({r.status_code})", flush=True)
+            print(f"Fintables bağlantı hatası: {r.status_code}", flush=True)
             return None
 
-        data = r.json()
-        if not isinstance(data, dict) or "financialTableList" not in data:
-            print("⚠️ Beklenen formatta veri yok veya şirket bulunamadı", flush=True)
+        # HTML'den sade metin çıkar
+        soup = BeautifulSoup(r.text, "html.parser")
+        text = soup.get_text(separator="\n")
+        text = re.sub(r"\n+", "\n", text).strip()
+
+        # tablo kısmını izole etmeye çalış
+        match = re.search(r"Gelir Tablosu(.*?)Finansal Durum", text, re.S)
+        clean_text = match.group(1) if match else text[:3000]
+
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            return {"period": "⚠️ API anahtarı eksik", "summary": None}
+
+        prompt = (
+            f"Aşağıda Fintables sitesinden alınan {symbol} bilanço verileri var.\n"
+            "Bu metni inceleyip özetle. Şu verileri çıkar:\n"
+            "Dönem, Net Kâr, Ciro, Özsermaye, Borç/Özsermaye oranı, Kâr marjı.\n"
+            "Yatırım tavsiyesi verme, kısa ve sade yaz.\n\n"
+            f"{clean_text}"
+        )
+
+        resp = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "gpt-4o-mini",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 180,
+                "temperature": 0.6,
+            },
+            timeout=15,
+        )
+
+        if resp.status_code != 200:
+            print("⚠️ OpenAI HTTP hatası:", resp.text, flush=True)
             return None
 
-        table = data["financialTableList"][0]
-
-        # Ana kalemler
-        net_kar = float(table.get("donem_net_kari_zarari", 0) or 0)
-        ciro = float(table.get("net_satislar", 0) or 0)
-        ozsermaye = float(table.get("ozsermaye_toplami", 0) or 0)
-        borc = float(table.get("kisa_vadeli_borclar", 0) or 0) + float(table.get("uzun_vadeli_borclar", 0) or 0)
-
-        borc_orani = (borc / ozsermaye * 100) if ozsermaye else None
-        kar_marji = (net_kar / ciro * 100) if ciro else None
+        data = resp.json()
+        msg = (data.get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
 
         return {
-            "period": table.get("donem", "—"),
-            "net_kar": net_kar,
-            "ciro": ciro,
-            "ozsermaye": ozsermaye,
-            "borc_orani": borc_orani,
-            "kar_marji": kar_marji,
+            "period": "Fintables (AI Özet)",
+            "summary": msg or "⚠️ AI bilanço özeti alınamadı."
         }
 
     except Exception as e:
-        print("📉 KAP bağlantı hatası:", e, flush=True)
+        print("💥 Fintables bilanço hatası:", e, flush=True)
         return None
+
 
 
 # =============== MESAJ OLUŞTURMA ===============
@@ -307,21 +325,13 @@ def build_message(symbol):
     else:
         lines.append("\n\n📊 Teknik analiz alınamadı.")
 
-    # --- Temel Finansal Veriler (Bilanço Özeti) ---
+       # --- Temel Finansal Veriler (AI Fintables Bilanço) ---
     fin = get_balance_summary(symbol)
     if fin:
-        lines.append("\n\n🏦 <b>Bilanço Özeti</b>")
-        lines.append(f"📅 Dönem: {fin['period']}")
-        if fin.get('net_kar'):
-            lines.append(f"💰 Net Kâr: {round(fin['net_kar']/1e9,2)} milyar TL")
-        if fin.get('ciro'):
-            lines.append(f"💵 Ciro: {round(fin['ciro']/1e9,2)} milyar TL")
-        if fin.get('ozsermaye'):
-            lines.append(f"🏢 Özsermaye: {round(fin['ozsermaye']/1e9,2)} milyar TL")
-        if fin.get('borc_orani'):
-            lines.append(f"📊 Borç/Özsermaye: %{round(fin['borc_orani'],1)}")
-        if fin.get('kar_marji'):
-            lines.append(f"📈 Kâr Marjı: %{round(fin['kar_marji'],1)}")
+        lines.append("\n\n🏦 <b>Bilanço Özeti (Fintables)</b>")
+        lines.append(f"📅 Dönem: {fin.get('period', '-')}")
+        if fin.get("summary"):
+            lines.append(f"🧾 {fin['summary']}")
 
     # --- Haberler (tek çekim) ---
     news_text = get_news(symbol)
