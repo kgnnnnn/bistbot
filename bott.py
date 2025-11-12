@@ -194,7 +194,6 @@ def get_balance_summary(symbol):
         return {"summary": "⚠️ Bilanço verisi alınamadı."}
 
 
-# =============== MESAJ OLUŞTURMA ===============
 def build_message(symbol):
     symbol = symbol.strip().upper()
     info = get_price(symbol)
@@ -204,13 +203,14 @@ def build_message(symbol):
     # --- Fiyat ---
     if info:
         lines.append(f"💰 Fiyat: {info['fiyat']} TL")
-        parts = []
-        if info.get("acilis"): parts.append(f"Açılış: {info['acilis']}")
-        if info.get("kapanis"): parts.append(f"Kapanış: {info['kapanis']}")
-        if info.get("tavan"): parts.append(f"🔼 Tavan: {info['tavan']}")
-        if info.get("taban"): parts.append(f"🔽 Taban: {info['taban']}")
-        if parts:
-            lines.append("📊 " + " | ".join(parts))
+        if info.get("acilis"):
+            lines.append(f"📊 Açılış: {info['acilis']}")
+        if info.get("kapanis"):
+            lines.append(f"📉 Kapanış: {info['kapanis']}")
+        if info.get("tavan"):
+            lines.append(f"🔼 Tavan: {info['tavan']}")
+        if info.get("taban"):
+            lines.append(f"🔽 Taban: {info['taban']}")
 
     # --- Teknik Analiz ---
     if tech:
@@ -239,7 +239,6 @@ def build_message(symbol):
 
     lines.append("\n<b>💬 Görüş & Öneri:</b> @kriptosbtc")
     return "\n".join(lines)
-
 
 # =============== ANA DÖNGÜ ===============
 def main():
