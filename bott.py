@@ -13,19 +13,18 @@ import html
 from datetime import datetime, timedelta
 from urllib.parse import quote
 
-
 openai.api_key = os.getenv("OPENAI_API_KEY")
 print("DEBUG OPENAI KEY:", openai.api_key[:10] if openai.api_key else "YOK", flush=True)
 
 BOT_TOKEN = "8116276773:AAHoSQAthKmijTE62bkqtGQNACf0zi0JuCs"
 URL = f"https://api.telegram.org/bot{BOT_TOKEN}/"
 
-# Istanbul time helper (UTC+3). If your server is UTC, this aligns with TR time.
+# ====== ZAMAN (TR - UTC+3) ======
 IST_UTC_OFFSET_HOURS = 3
 def now_istanbul():
     return datetime.utcnow() + timedelta(hours=IST_UTC_OFFSET_HOURS)
 
-# =============== TELEGRAM ===============
+# ====== TELEGRAM ======
 def get_updates(offset=None):
     try:
         r = requests.get(URL + "getUpdates", params={"timeout": 100, "offset": offset}, timeout=100)
@@ -44,7 +43,7 @@ def send_message(chat_id, text):
     except Exception as e:
         print("Send error:", e, flush=True)
 
-# =============== FAVORİ SİSTEMİ ===============
+# ====== FAVORİ SİSTEMİ ======
 FAVORI_FILE = "favoriler.json"
 
 def load_favorites():
@@ -64,7 +63,7 @@ def save_favorites(data):
     except Exception as e:
         print("Favori kaydetme hatası:", e, flush=True)
 
-# =============== SAYI BİÇİMLENDİRME ===============
+# ====== SAYI BİÇİMLENDİRME ======
 def format_number(num):
     """Sayıları 12.345.678 formatında döndürür."""
     try:
@@ -79,9 +78,7 @@ def format_number(num):
     except Exception:
         return None
 
-# =============== HABERLER (Google RSS) ===============
-import xml.etree.ElementTree as ET
-
+# ====== HABERLER (Google RSS) ======
 def get_news(symbol):
     """Google News RSS üzerinden hisseye ait son 3 haberi döndürür."""
     try:
@@ -111,7 +108,7 @@ def get_news(symbol):
         print("get_news hata:", e, flush=True)
         return "📰 Haberler alınamadı."
 
-# =============== HABER ANALİZİ (OpenAI - Kriptos AI) ===============
+# ====== HABER AI ÖZETİ ======
 def analyze_news_with_ai(news_text):
     try:
         api_key = os.getenv("OPENAI_API_KEY")
@@ -143,7 +140,7 @@ def analyze_news_with_ai(news_text):
         print("AI yorum hatası:", e, flush=True)
         return "⚠️ AI yorum alınamadı."
 
-# =============== YAHOO FİYAT ===============
+# ====== YAHOO FİYAT ======
 def get_price(symbol):
     """Yahoo Finance üzerinden fiyat, açılış, kapanış, tavan, taban bilgilerini çeker."""
     try:
@@ -163,7 +160,7 @@ def get_price(symbol):
         print("get_price hata:", e, flush=True)
         return None
 
-# =============== TRADINGVIEW (RSI, EMA50/EMA200) ===============
+# ====== TRADINGVIEW (RSI, EMA50/EMA200) ======
 TV_URL = "https://tradingview-real-time.p.rapidapi.com/technicals/summary"
 TV_HEADERS = {
     "x-rapidapi-key": "1749e090ffmsh612a371009ddbcap1c2f2cjsnaa23aba94831",
@@ -211,32 +208,31 @@ def combine_recommendation(ema_sig, rsi_label):
         return "SAT"
     return "NÖTR"
 
-# --- BILANÇO ÖZETİ (PASİF - Placeholder Versiyonu) ---
+# ====== BİLANÇO (PLACEHOLDER) ======
 def get_balance_summary(symbol):
-    """Bilanço özeti şu anda pasif."""
     return {"summary": "🤖 <b>Bilanço Özeti</b>\n<b>Kriptos AI:</b> Çok yakında"}
 
-##-------------------------MESAJ OLUŞTURMA-------------------------##
+# ====== HİSSE MESAJI OLUŞTURMA ======
 def build_message(symbol):
     symbol = symbol.strip().upper()
     info = get_price(symbol)
     tech = get_tv_analysis(symbol)
     lines = [f"💹 <b>{symbol}</b> Hisse Özeti (BIST100)"]
 
-    # --- Fiyat ---
+    # Fiyat
     if info:
         fiyat_fmt = format_number(info['fiyat'])
         lines.append(f"💰 Fiyat: {fiyat_fmt if fiyat_fmt is not None else info['fiyat']} TL")
-        if info.get("acilis"):
+        if info.get("acilis") is not None:
             lines.append(f"📈 Açılış: {info['acilis']}")
-        if info.get("kapanis"):
+        if info.get("kapanis") is not None:
             lines.append(f"📉 Kapanış: {info['kapanis']}")
-        if info.get("tavan"):
+        if info.get("tavan") is not None:
             lines.append(f"🔼 Tavan: {info['tavan']}")
-        if info.get("taban"):
+        if info.get("taban") is not None:
             lines.append(f"🔽 Taban: {info['taban']}")
 
-    # --- Teknik Analiz ---
+    # Teknik Analiz
     if tech:
         rsi_val = tech.get("rsi")
         ema50, ema200 = tech.get("ema50"), tech.get("ema200")
@@ -248,13 +244,13 @@ def build_message(symbol):
         lines.append(f"🔄 EMA(50/200): {ema_sig}")
         lines.append(f"🤖 <b>Kriptos AI:</b> {overall}")
 
-    # --- Bilanço Özeti ---
+    # Bilanço Placeholder
     fin = get_balance_summary(symbol)
     if fin and fin.get("summary"):
         lines.append("\n🏦 <b>Bilanço Özeti</b>")
         lines.append(fin["summary"])
 
-    # --- Haberler ---
+    # Haberler + AI özet
     news_text = get_news(symbol)
     lines.append("\n" + news_text)
     ai_comment = analyze_news_with_ai(news_text)
@@ -263,8 +259,11 @@ def build_message(symbol):
     lines.append("\n<b>💬 Görüş & Öneri:</b> @kriptosbtc")
     return "\n".join(lines)
 
-# --------------- FAVORİ ÖZETİ (TEKRAR KULLANILABİLİR) ---------------
+# ====== FAVORİ ÖZET SATIRI (tek hisse) ======
 def build_favorite_line(sym):
+    sym = sym.strip().upper()
+    if not sym:
+        return "• (boş sembol)"
     info = get_price(sym)
     tech = get_tv_analysis(sym)
     if not info:
@@ -275,7 +274,7 @@ def build_favorite_line(sym):
     ema_sig = map_ema_signal(tech.get("ema50"), tech.get("ema200")) if tech else "N/A"
     return f"• <b>{sym}</b> — {fiyat_fmt if fiyat_fmt is not None else info.get('fiyat')} TL | RSI: {rsi_label} | EMA(50/200): {ema_sig}"
 
-# =============== OTOMATİK FAVORİ GÖNDERİCİ ===============
+# ====== OTOMATİK FAVORİ GÖNDERİCİ ======
 _last_sent_marker = {"morning": None, "evening": None}
 
 def send_favorite_summaries_loop():
@@ -284,7 +283,6 @@ def send_favorite_summaries_loop():
         try:
             now = now_istanbul()
             hhmm = now.strftime("%H:%M")
-            # duplicate engeli: aynı dakika içinde bir kez
             if hhmm == "10:00" and _last_sent_marker["morning"] != now.strftime("%Y-%m-%d 10:00"):
                 _last_sent_marker["morning"] = now.strftime("%Y-%m-%d 10:00")
                 _broadcast_favorites(now_label="Sabah")
@@ -293,7 +291,7 @@ def send_favorite_summaries_loop():
                 _broadcast_favorites(now_label="Akşam")
         except Exception as e:
             print("Favori döngü hatası:", e, flush=True)
-        time.sleep(20)  # 20 sn’de bir kontrol
+        time.sleep(20)
 
 def _broadcast_favorites(now_label="Özet"):
     favorites = load_favorites()
@@ -301,23 +299,30 @@ def _broadcast_favorites(now_label="Özet"):
         print("Favori listesi boş, yayın yok.", flush=True)
         return
     ts = now_istanbul().strftime("%d.%m.%Y %H:%M")
+
     for uid, fav_list in favorites.items():
         if not fav_list:
             continue
+        # Başlık
         send_message(uid, f"📊 <b>Favori Hisselerin {now_label} Özeti</b> — {ts}")
-        for sym in fav_list[:20]:  # güvenlik: kullanıcı başına ilk 20 hisse
+
+        # Her favori için TAM MESAJ (fiyat + teknik + haber + AI özet)
+        for sym in fav_list[:20]:  # güvenlik
             try:
-                msg = build_message(sym.upper())
+                sym = sym.strip().upper()
+                if not sym:
+                    continue
+                msg = build_message(sym)
                 send_message(uid, msg)
-                time.sleep(1)  # API limit nazikliği
+                time.sleep(1)  # rate limit nazikliği
             except Exception as e:
                 send_message(uid, f"⚠️ {sym} gönderilirken hata oluştu: {e}")
 
-
-# =============== ANA DÖNGÜ ===============
+# ====== ANA DÖNGÜ ======
 def main():
     print("🚀 Kriptos Borsa Botu aktif!", flush=True)
-    # otomatik favori thread'i
+
+    # Otomatik favori thread'i
     Thread(target=send_favorite_summaries_loop, daemon=True).start()
 
     last_update_id = None
@@ -329,21 +334,25 @@ def main():
         if not updates:
             time.sleep(0.8)
             continue
+
         results = updates.get("result", [])
         results.sort(key=lambda x: x.get("update_id", 0))
+
         for item in results:
             uid = item.get("update_id")
             if uid in processed:
                 continue
             processed.add(uid)
             last_update_id = uid + 1
+
             msg_data = item.get("message", {})
             chat_id = msg_data.get("chat", {}).get("id")
             text = (msg_data.get("text") or "").strip()
+
             if not chat_id or not text:
                 continue
 
-            # ---- /start ----
+            # /start
             if text.lower() == "/start":
                 msg = (
                     "👋 <b>Kriptos BIST100 Takip Botu'na Hoş Geldin!</b>\n\n"
@@ -351,8 +360,8 @@ def main():
                     "💡 Algoritmamız fiyat, güncel haberler, hacim vb. bilgileri iletir.\n\n"
                     "🤖 Yapay zeka destekli algoritmamız RSI ve EMA indikatör analizleri yapar ve (al-sat-vb.) önermeler üretir.\n\n"
                     "⚙️ Veriler: TradingView & Yahoo Finance'den sağlanmaktadır.\n\n"
-                    "❗️  UYARI: Bilgiler kesinlikle YATIRIM TAVSİYESİ kapsamında değildir!\n\n"
-                    "📊 Komut örneği: <b>ASELS/asels</b>\n\n"
+                    "❗️ UYARI: Bilgiler kesinlikle YATIRIM TAVSİYESİ kapsamında değildir!\n\n"
+                    "📊 Komut örneği: <b>ASELS</b>\n\n"
                     "⭐ Favori komutları:\n"
                     "/favori ekle ASELS\n"
                     "/favori sil ASELS\n"
@@ -362,13 +371,13 @@ def main():
                 send_message(chat_id, msg)
                 continue
 
-            # ---- /favori komutları ----
+            # /favori komutları
             if text.lower().startswith("/favori"):
                 parts = text.split()
                 cmd = parts[1] if len(parts) > 1 else None
 
                 if cmd == "ekle" and len(parts) >= 3:
-                    sym = parts[2].upper()
+                    sym = parts[2].upper().strip()
                     if not sym.isalpha():
                         send_message(chat_id, "⚠️ Lütfen geçerli bir hisse kodu girin. (Örn: ASELS)")
                         continue
@@ -383,7 +392,7 @@ def main():
                     continue
 
                 elif cmd == "sil" and len(parts) >= 3:
-                    sym = parts[2].upper()
+                    sym = parts[2].upper().strip()
                     favs = favorites.get(str(chat_id), [])
                     if sym in favs:
                         favs.remove(sym)
@@ -394,7 +403,7 @@ def main():
                         send_message(chat_id, f"⚠️ <b>{sym}</b> favorilerinde bulunamadı.")
                     continue
 
-                elif cmd in ["liste", "goster"]:
+                elif cmd in ["liste", "goster", "göster"]:
                     favs = favorites.get(str(chat_id), [])
                     if not favs:
                         send_message(chat_id, "⭐ Henüz hiç favorin yok. Örnek: /favori ekle ASELS")
@@ -407,15 +416,16 @@ def main():
                     send_message(chat_id, "⚙️ Kullanım:\n/favori ekle ASELS\n/favori sil ASELS\n/favori liste")
                     continue
 
-            # ---- Hisse sorgusu ----
+            # Hisse sorgusu
             symbol = text.split()[0].lstrip("/").upper()
             print(f"Gelen istek: {symbol}", flush=True)
             reply = build_message(symbol)
             send_message(chat_id, reply)
             time.sleep(0.8)
+
         time.sleep(0.5)
 
-# =============== FLASK (Render Portu) ===============
+# ====== FLASK (Render portu) ======
 app = Flask(__name__)
 
 @app.route('/')
@@ -428,9 +438,9 @@ def run():
 
 Thread(target=run).start()
 
-# --- TEST AMAÇLI MANUEL FAVORİ GÖNDERİM ---
+# ====== TEST AMAÇLI MANUEL FAVORİ GÖNDERİM ======
+# DİKKAT: Deploy anında çalışır. İstemiyorsan yoruma al.
 _broadcast_favorites(now_label="Test (Manuel)")
-
 
 if __name__ == "__main__":
     main()
