@@ -303,9 +303,6 @@ def build_message(symbol):
     lines.append("\n" + ai_comment)
 
     # --- Kaynak & Görüş ---
-    if info and info.get("url"):
-        lines.append(f"\n\n📎 <a href='{info['url']}'>Kaynak: Yahoo Finance</a>")
-
     lines.append("\n\n<b>💬 Görüş & Öneri:</b> @kriptosbtc")
 
     return "\n".join(lines)
