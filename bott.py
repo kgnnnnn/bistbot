@@ -205,27 +205,32 @@ from datetime import datetime, timedelta
 from urllib.parse import quote
 
 BAL_NEWS_DOMAINS = [
+    # 🔝 1️⃣ Senin belirlediğin öncelikli kaynaklar (öncelik sırasına göre)
     "paratic.com",
     "bigpara.hurriyet.com.tr",
-    "bloomberght.com",
-    "dunya.com",
-    "borsagundem.com",
-    "foreks.com",
+    "qnbinvest.com.tr",
+    "getmidas.com",
+    "borsacoo.com",
+    "tr.tradingview.com",
+    "albyatirim.com.tr",
     "hurriyet.com.tr",
+    "bloomberght.com",
     "ntv.com.tr",
     "trthaber.com",
     "cnnturk.com",
-    "patronlardunyasi.com",
-    "haberturk.com",
-    "finansgundem.com",
     "investing.com",
+    "haberturk.com",
+
+    # 🔻 2️⃣ İkincil / destek kaynaklar (senin listenin altına eklenmiş)
+    "dunya.com",
+    "borsagundem.com",
+    "foreks.com",
+    "patronlardunyasi.com",
+    "finansgundem.com",
     "odatv.com",
     "politikam.com",
     "milliyet.com.tr",
-    "isyatirim.com.tr",
-    "borsacoo.com",
-    "albyatirim.com.tr",
-    "qnbinvest.com.tr",
+    
 ]
 
 COMMON_TICKERS = [
@@ -384,7 +389,7 @@ def get_balance_summary(symbol: str):
 
     # Haber adaylarını topla
     domains = list(BAL_NEWS_DOMAINS)
-    random.shuffle(domains)
+    # random.shuffle(domains)
     candidates = []
     for d in domains:
         candidates.extend(_fetch_gnews_items(sym, d))
