@@ -204,7 +204,7 @@ def build_message(symbol):
     if info:
         lines.append(f"💰 Fiyat: {info['fiyat']} TL")
         if info.get("acilis"):
-            lines.append(f"📊 Açılış: {info['acilis']}")
+            lines.append(f"📈 Açılış: {info['acilis']}")
         if info.get("kapanis"):
             lines.append(f"📉 Kapanış: {info['kapanis']}")
         if info.get("tavan"):
