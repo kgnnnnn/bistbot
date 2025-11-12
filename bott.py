@@ -185,32 +185,49 @@ def combine_recommendation(ema_sig, rsi_label):
         return "SATIŞ"
     return "NÖTR"
 
-# =============== BİLANÇO (Bigpara + OpenAI) ===============
+# =============== BİLANÇO (Bigpara + OpenAI - Akıllı URL Sürümü) ===============
 
 def get_balance_summary(symbol):
     """
     Bigpara bilanço sayfasından tabloyu çeker, AI ile kısa Türkçe özet üretir.
     Örn: https://www.bigpara.com/finans/borsa/hisse-senedi/aselsan-asels/bilanco/
     """
+    import pandas as pd
+
     symbol = symbol.upper().strip()
     api_key = os.getenv("OPENAI_API_KEY")
-    try:
-        url = f"https://www.bigpara.com/finans/borsa/hisse-senedi/{symbol.lower()}-{symbol.lower()}/bilanco/"
-        print(f"📡 Bigpara isteği: {url}", flush=True)
 
-        # sayfadan tüm tabloları çek
-        tables = pd.read_html(url)
-        if not tables or len(tables[0]) == 0:
-            return {"summary": "⚠️ Bigpara bilanço verisi bulunamadı."}
+    # Muhtemel URL varyasyonları
+    possible_urls = [
+        f"https://www.bigpara.com/finans/borsa/hisse-senedi/{symbol.lower()}-{symbol.lower()}/bilanco/",
+        f"https://www.bigpara.com/finans/borsa/hisse-senedi/{symbol.lower()}/bilanco/",
+        f"https://www.bigpara.com/finans/borsa/hisse-senedi/{symbol.lower()}-aselsan/bilanco/",
+        f"https://www.bigpara.com/finans/borsa/hisse-senedi/{symbol.lower()}-thy/bilanco/"
+    ]
 
-        df = tables[0]
-        # tabloyu temizle
-        df.columns = [str(c).strip() for c in df.columns]
-        df = df.dropna(how="all")
+    for url in possible_urls:
+        try:
+            print(f"📡 Bigpara isteği: {url}", flush=True)
+            tables = pd.read_html(url)
+            if tables and len(tables[0]) > 0:
+                df = tables[0]
+                break
+        except Exception as err:
+            print(f"⚠️ URL denemesi başarısız: {url} ({err})", flush=True)
+            df = None
 
-        # metin hale getir
-        text = df.to_string(index=False)
-        prompt = f"""
+    if df is None or df.empty:
+        return {"summary": "⚠️ Bigpara bilanço verisi bulunamadı."}
+
+    # tabloyu temizle
+    df.columns = [str(c).strip() for c in df.columns]
+    df = df.dropna(how="all")
+
+    # tabloyu metin haline getir
+    text = df.to_string(index=False)
+
+    # AI özet oluştur
+    prompt = f"""
 Aşağıda {symbol} hissesinin bilanço verileri yer alıyor:
 {text}
 
@@ -219,7 +236,7 @@ Net kâr, ciro, borç, özkaynak gibi finansal kalemlerden bahset.
 Yatırım tavsiyesi verme.
 """
 
-        # AI özet
+    try:
         resp = requests.post(
             "https://api.openai.com/v1/chat/completions",
             headers={
@@ -247,8 +264,7 @@ Yatırım tavsiyesi verme.
         return {"summary": "⚠️ Bilanço verisi alınamadı."}
 
 
-
-## MESAJ OLUŞTURM A###
+##-------------------------MESAJ OLUŞTURMA-------------------------##
 def build_message(symbol):
     symbol = symbol.strip().upper()
     info = get_price(symbol)
