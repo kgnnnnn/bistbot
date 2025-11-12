@@ -198,7 +198,7 @@ def combine_recommendation(ema_sig, rsi_label):
     return "NÖTR"
 
 
-# ==== BILANÇO ÖZETİ + Kriptos AI (2025 Dinamik Çeyrek, Tüm BIST100) ====
+# ==== BILANÇO ÖZETİ + Kriptos AI (TAM SÜRÜM - 2025 Dinamik Çeyrek + Alias + Geniş 2025 Algısı) ====
 
 import re, html, time, random, requests, xml.etree.ElementTree as ET, openai, os
 from datetime import datetime
@@ -207,14 +207,25 @@ from urllib.parse import quote
 # --- API ANAHTARI ---
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# --- HABER KAYNAKLARI ---
+# --- HABER KAYNAKLARI (öncelik sırası) ---
 BAL_NEWS_DOMAINS = [
     "paratic.com",
     "albyatirim.com.tr",
     "bigpara.hurriyet.com.tr",
+    "getmidas.com",
+    "borsacoo.com",
+    "qnbinvest.com.tr",
+    "bloomberght.com",
+    "hurriyet.com.tr",
+    "ntv.com.tr",
+    "haberturk.com",
+    "investing.com",
+    "dunya.com",
+    "borsagundem.com",
+    "finansgundem.com",
 ]
 
-# --- TÜM BIST100 HİSSELERİ ---
+# --- TÜM BIST100 ---
 COMMON_TICKERS = [
     "ACSEL","AEFES","AGHOL","AKBNK","AKCNS","AKFGY","AKSA","AKSEN","ALARK","ALBRK",
     "ARCLK","ASELS","ASTOR","AYDEM","AYGAZ","BAGFS","BERA","BIMAS","BIOEN","BRISA",
@@ -226,7 +237,25 @@ COMMON_TICKERS = [
     "TTRAK","TUKAS","TUPRS","ULKER","VAKBN","VESTL","VERTU","YKBNK","YATAS","ZOREN"
 ]
 
-# --- KELİME GRUPLARI ---
+# --- ŞİRKET ADI ALIAS'LARI ---
+TICKER_ALIASES = {
+    "ASELS": ["aselsan","aselsan elektronik"],
+    "THYAO": ["thy","türk hava yolları","turk hava yollari","turkish airlines"],
+    "EREGL": ["eregli","erdemir","ereğli demir çelik"],
+    "BIMAS": ["bim","birleşik mağazalar","bim market"],
+    "TUPRS": ["tüpraş","tupras"],
+    "SISE":  ["şişecam","sisecam"],
+    "KCHOL": ["koç holding","koc holding"],
+    "GARAN": ["garanti","garanti bbva"],
+    "AKBNK": ["akbank"],
+    "TCELL": ["turkcell"],
+    "HALKB": ["halkbank","türkiye halk bankası"],
+    "YKBNK": ["yapı kredi","yapi kredi"],
+    "VESTL": ["vestel"],
+    "PETKM": ["petkim"],
+}
+
+# --- ANAHTAR KELİMELER ---
 FIN_KEYWORDS_NEAR = {
     "net_income": ["net kâr","net kar","net dönem kârı","net dönem karı","net profit","net income"],
     "revenue": ["ciro","gelir","hasılat","net satış","revenue","sales"],
@@ -244,42 +273,36 @@ UNIT_MAP = {
     "b": 1_000_000_000,
 }
 
-# --- TÜM DÖNEM VARYASYONLARI (Q1–Q4 + 9A + kısaltmalar) ---
-PERIOD_KEYWORDS = [
-    "q1","q1/1","1q","q 1","1.q","1. çeyrek","birinci çeyrek","1ç25","1ç/25","first quarter","1st quarter",
-    "q2","q2/2","2q","q 2","2.q","2. çeyrek","ikinci çeyrek","2ç25","2ç/25","second quarter","2nd quarter",
-    "q3","3q","q3 25","q325","3ç","3ç25","3ç/25","3. çeyrek","üçüncü çeyrek","third quarter",
-    "q4","4q","q4 25","4ç","4. çeyrek","4ç25","4ç/25","dördüncü çeyrek","fourth quarter",
-    "6 aylık","yarıyıl","half year","9 aylık","dokuz aylık","ilk 9 ay","9a","9a25","9a2025",
-    "12 aylık","yıllık","annual","year-end","yıl sonu","full year"
-]
-
-# --- YARDIMCI FONKSİYONLAR ---
+# --- 2025 ALGILAYICI (kısaltmalar dahil) ---
+def _mentions_2025_or_implicit(text: str) -> bool:
+    t = text.lower()
+    if "2025" in t:
+        return True
+    patterns = [
+        r"\bq[1-4]\s*['/ -]?\s*25\b", r"\b[1-4]\s*ç\s*['/ -]?\s*25\b",
+        r"\b[1-4]\.\s*çeyrek\b.*?\b25\b", r"\b9a\s*['/ -]?\s*25\b",
+        r"\bdokuz\s*ay(lık)?\b.*?\b25\b", r"\bilk\s*9\s*ay\b.*?\b25\b"
+    ]
+    return any(re.search(rx,t) for rx in patterns)
 
 def _safe_get(url: str) -> str:
     try:
-        r = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0 (KriptosBot/1.0)"})
-        if r.status_code != 200:
-            return ""
-        txt = r.text
-        return txt[:400_000]
+        r = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        if r.status_code != 200: return ""
+        return r.text[:400_000]
     except:
         return ""
 
 def _detect_previous_quarter_keywords():
     ay = datetime.now().month
-    if ay <= 3:
-        return ["q4","4. çeyrek","dördüncü çeyrek","annual","yıl sonu"]
-    elif ay <= 6:
-        return ["q1","1. çeyrek","birinci çeyrek"]
-    elif ay <= 9:
-        return ["q2","2. çeyrek","ikinci çeyrek","6 aylık","yarıyıl"]
-    else:
-        return ["q3","3. çeyrek","üçüncü çeyrek","9 aylık","dokuz aylık","9a","ilk 9 ay"]
+    if ay <= 3: return ["q4","4. çeyrek","dördüncü çeyrek","annual","yıl sonu"]
+    elif ay <= 6: return ["q1","1. çeyrek","birinci çeyrek"]
+    elif ay <= 9: return ["q2","2. çeyrek","ikinci çeyrek","6 aylık","yarıyıl"]
+    else: return ["q3","3. çeyrek","üçüncü çeyrek","9 aylık","dokuz aylık","9a","ilk 9 ay"]
 
 def _matches_valid_2025_period(title, html_text):
     combined = (title + " " + html_text).lower()
-    if "2025" not in combined:
+    if not _mentions_2025_or_implicit(combined):
         return False
     for y in ["2024","2023","2022"]:
         if y in combined:
@@ -287,106 +310,89 @@ def _matches_valid_2025_period(title, html_text):
     target = _detect_previous_quarter_keywords()
     if not any(t in combined for t in target):
         return False
-    if not any(k in combined for k in ["bilanço","bilanco","finansal sonuç","net kar","ciro","gelir"]):
-        return False
-    return True
+    fin = ["bilanço","bilanco","finansal sonuç","net kar","ciro","gelir","faaliyet raporu"]
+    return any(f in combined for f in fin)
+
+def _normalize_tr(s: str) -> str:
+    return s.translate(str.maketrans("çğıöşüÇĞİÖŞÜ","cgiosuCGIOSU"))
 
 def _belongs_to_symbol(symbol, title, html_text):
     s = symbol.upper()
-    alltext = (title + " " + html_text).upper()
-    if s not in alltext:
-        return False
-    for tk in COMMON_TICKERS:
-        if tk != s and alltext.count(tk) >= 2:
-            return False
-    return True
+    text = _normalize_tr((title + " " + html_text).lower())
+    if s.lower() in text:
+        return True
+    aliases = TICKER_ALIASES.get(s, [])
+    return any(_normalize_tr(a.lower()) in text for a in aliases)
 
 def _extract_numbers_near_keywords(text, kw_map):
-    res = {k: [] for k in kw_map.keys()}
+    res = {k: [] for k in kw_map}
     low = text.lower()
-    for field, kws in kw_map.items():
+    for fld, kws in kw_map.items():
         for kw in kws:
             for m in re.finditer(re.escape(kw), low):
-                start = max(0, m.start()-120)
-                end = min(len(low), m.end()+120)
-                segment = low[start:end]
-                nums = re.findall(r"\d+[.,]?\d*\s*(milyar|milyon|bin|tl|₺)?", segment)
+                seg = low[max(0, m.start()-120):m.end()+120]
+                nums = re.findall(r"\d+[.,]?\d*\s*(milyar|milyon|bin|tl|₺)?", seg)
                 for n in nums:
                     try:
-                        val = float(re.sub("[^0-9.,]","",n[0]).replace(",",".")) if isinstance(n, tuple) else float(re.sub("[^0-9.,]","",n).replace(",",".")) 
-                        res[field].append(val)
+                        num = re.sub("[^0-9.,]","",n[0] if isinstance(n,tuple) else n).replace(",",".")
+                        val = float(num)
+                        res[fld].append(val)
                     except: pass
     return res
 
 def _fetch_gnews_items(symbol, domain):
     ts = int(time.time()*1000)
-    query = f'{symbol} (bilanço OR finansal sonuç OR net kâr OR ciro OR faaliyet raporu) site:{domain}'
-    url = f"https://news.google.com/rss/search?q={quote(query)}&hl=tr&gl=TR&ceid=TR:tr&t={ts}&nocache={random.randint(10000,9999999)}"
+    q = f'{symbol} (bilanço OR finansal sonuç OR net kâr OR ciro OR faaliyet raporu) site:{domain}'
+    url = f"https://news.google.com/rss/search?q={quote(q)}&hl=tr&gl=TR&ceid=TR:tr&t={ts}&nocache={random.randint(1,999999)}"
     try:
         r = requests.get(url, timeout=10)
-        if r.status_code != 200:
-            return []
+        if r.status_code != 200: return []
         root = ET.fromstring(r.text.replace("&","&amp;"))
-        out=[]
-        for it in root.findall(".//item"):
-            out.append({
-                "title": (it.find('title').text or '').strip(),
-                "link": (it.find('link').text or '').strip(),
-                "domain": domain
-            })
-        return out
+        return [{"title":(i.find('title').text or '').strip(),"link":(i.find('link').text or '').strip(),"domain":domain}
+                for i in root.findall(".//item")]
     except:
         return []
 
 def _format_human(v):
-    if v >= 1_000_000_000: return f"{round(v/1_000_000_000,2)} milyar TL"
-    if v >= 1_000_000: return f"{round(v/1_000_000,2)} milyon TL"
-    if v >= 1_000: return f"{round(v/1_000,2)} bin TL"
+    if v>=1_000_000_000: return f"{round(v/1_000_000_000,2)} milyar TL"
+    if v>=1_000_000: return f"{round(v/1_000_000,2)} milyon TL"
+    if v>=1_000: return f"{round(v/1_000,2)} bin TL"
     return f"{int(v)} TL"
 
-# --- Kriptos AI Haber Yorumlayıcı ---
-def analyze_balance_with_ai(news_titles):
-    if not openai.api_key: 
-        return "⚠️ AI devre dışı (anahtar yok)"
+def analyze_balance_with_ai(titles):
+    if not openai.api_key: return "⚠️ AI devre dışı (anahtar yok)"
     prompt = (
         "Aşağıda Borsa İstanbul'da işlem gören bir hisseye ait bilanço haberleri var.\n"
-        "Bu haberlerden şirketin finansal durumuna dair kısa (1 paragraf) bir Türkçe özet oluştur.\n"
-        "Net kâr, ciro, borç, özsermaye eğilimlerini yorumla. Yatırım tavsiyesi verme.\n\n"
-        f"{news_titles}\n\n"
-        "Yanıtı '🤖 <b>Kriptos AI:</b>' etiketiyle başlat."
+        "Bu haberlerden şirketin finansal durumunu 3-4 cümleyle özetle.\n"
+        "Net kâr, ciro, borç, özsermaye eğilimlerinden bahset.\n"
+        "Yatırım tavsiyesi verme.\n\n"
+        f"{titles}\n\nYanıtı '🤖 <b>Kriptos AI:</b>' ile başlat."
     )
     try:
         r = requests.post(
             "https://api.openai.com/v1/chat/completions",
             headers={"Authorization": f"Bearer {openai.api_key}"},
-            json={"model":"gpt-4o-mini","messages":[{"role":"user","content":prompt}],"max_tokens":150},
+            json={"model":"gpt-4o-mini","messages":[{"role":"user","content":prompt}],"max_tokens":180},
             timeout=15
         )
-        msg = r.json().get("choices",[{}])[0].get("message",{}).get("content","")
-        return msg.strip() or "🤖 <b>Kriptos AI:</b> Yorum alınamadı."
+        return r.json()["choices"][0]["message"]["content"].strip()
     except:
-        return "🤖 <b>Kriptos AI:</b> Sistem yanıt veremedi."
+        return "🤖 <b>Kriptos AI:</b> Sistem yanıt vermedi."
 
 # --- ANA FONKSİYON ---
 def get_balance_summary(symbol):
     sym = symbol.strip().upper()
     if not sym:
-        return {"summary": "📄 Geçersiz hisse kodu."}
+        return {"summary":"📄 Geçersiz hisse kodu."}
 
-    # --- Haber adaylarını topla (limitli, performans dostu) ---
     domains = list(BAL_NEWS_DOMAINS)
-    candidates = []
-
-    # AI aktifse (OpenAI anahtarı varsa) limit daha düşük tutulur
-    limit = 150 if openai.api_key else 300
+    candidates=[]
+    limit=150 if openai.api_key else 300
 
     for d in domains:
-        items = _fetch_gnews_items(sym, d)
-        if items:
-            candidates.extend(items)
-        if len(candidates) >= limit:
-            break
-
+        items=_fetch_gnews_items(sym,d)
+        if items: candidates+=items
+        if len(candidates)>limit: break
 
     picked=[]
     for it in candidates:
@@ -399,16 +405,14 @@ def get_balance_summary(symbol):
         plain=re.sub(r"<[^>]+>"," ",html_text)
         numbers=_extract_numbers_near_keywords(plain,FIN_KEYWORDS_NEAR)
         picked.append({"title":title,"link":link,"domain":it["domain"],"numbers":numbers})
-        if len(picked)>=5:
-            break
+        if len(picked)>=5: break
 
     if not picked:
         return {"summary":"🏦 Bilanço Özeti\n📰 2025 yılına ait güncel bilanço haberi bulunamadı."}
 
     agg={k:[] for k in FIN_KEYWORDS_NEAR}
     for p in picked:
-        for fld,vals in p["numbers"].items():
-            agg[fld]+=vals
+        for fld,vals in p["numbers"].items(): agg[fld]+=vals
 
     parts=[]
     for fld,arr in agg.items():
@@ -418,12 +422,9 @@ def get_balance_summary(symbol):
         parts.append(f"{label}: {_format_human(val)}")
 
     summary="🤖 <b>Bilanço Özeti (haber tabanlı)</b>\n"+"\n".join(parts)
+    ai_comment=analyze_balance_with_ai("\n".join(p['title'] for p in picked))
     links="\n".join([f"• <a href='{p['link']}'>{html.escape(p['title'])}</a> ({p['domain']})" for p in picked[:3]])
-
-    ai_comment = analyze_balance_with_ai("\n".join(p['title'] for p in picked))
-
-    return {"summary": f"{summary}\n\n{ai_comment}\n\n🔗 <b>Kaynaklar</b>\n{links}"}
-
+    return {"summary":f"{summary}\n\n{ai_comment}\n\n🔗 <b>Kaynaklar</b>\n{links}"}
 
 ##-------------------------MESAJ OLUŞTURMA-------------------------##
 def build_message(symbol):
