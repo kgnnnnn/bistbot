@@ -2,6 +2,8 @@ import time, random, os, requests, yfinance as yf
 from flask import Flask
 from threading import Thread
 import openai
+import os, math
+from isyatirimhisse import fetch_financials
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 print("DEBUG OPENAI KEY:", openai.api_key[:10] if openai.api_key else "YOK", flush=True)
@@ -196,54 +198,118 @@ def get_tv_analysis(symbol):
 
 
 # =============== YFINANCE BİLANÇO ÖZETİ (Temel Finansallar) ===============
-def get_balance_summary(symbol):
-    """Yahoo Finance üzerinden son çeyrek finansal özet (Net Kâr, Ciro, Özsermaye, Borç, Kâr Marjı)."""
-    try:
-        ticker = yf.Ticker(symbol.upper() + ".IS")
-        fin = ticker.quarterly_financials
-        bs = ticker.quarterly_balance_sheet
 
-        if fin.empty or bs.empty:
+
+def _pick(df, patterns):
+    # satır adında geçen kalemleri esnek yakala (Türkçe varyasyonlar)
+    # df kolon/şema farklı olabilir; hem 'Kalem' hem 'item' olasılıklarını dene
+    name_col = 'Kalem' if 'Kalem' in df.columns else ('item' if 'item' in df.columns else None)
+    if not name_col: 
+        return None
+    mask = False
+    for p in patterns:
+        mask = mask | df[name_col].str.contains(p, case=False, regex=True, na=False)
+    sub = df[mask].copy()
+    if sub.empty:
+        return None
+    # En son dönem kolonunu/alanını bul
+    # Geniş formattaysa son sütunu, uzun formattaysa 'Period' ya da 'period' + 'Value'
+    if 'Period' in df.columns and ('Value' in df.columns or 'value' in df.columns):
+        vcol = 'Value' if 'Value' in df.columns else 'value'
+        # aynı kalemden birden fazla dönem varsa en yeniyi al
+        sub = sub.sort_values('Period').tail(1)
+        return sub.iloc[0][vcol]
+    else:
+        # geniş form: ilk iki sütun meta, sonrası dönem sütunlarıdır varsay
+        period_cols = [c for c in sub.columns if c not in ('Sembol','Symbol','Kalem','item','Grup','Group','Para','Currency')]
+        if not period_cols:
+            return None
+        last = period_cols[-1]
+        # sayıya çevir
+        val = sub.iloc[0][last]
+        try:
+            return float(val)
+        except Exception:
+            # 1.234,56 gibi değerleri normalize et
+            if isinstance(val, str):
+                v = val.replace('.', '').replace(',', '.')
+                try:
+                    return float(v)
+                except Exception:
+                    return None
             return None
 
-        last_col = fin.columns[0]
-        net_kar = fin.loc["Net Income"][last_col] if "Net Income" in fin.index else None
-        ciro = fin.loc["Total Revenue"][last_col] if "Total Revenue" in fin.index else None
-        ozsermaye = bs.loc["Total Stockholder Equity"][last_col] if "Total Stockholder Equity" in bs.index else None
-        borc = bs.loc["Total Liab"][last_col] if "Total Liab" in bs.index else None
+def get_balance_summary(symbol: str):
+    """
+    yfinance YOK. İş Yatırım kaynaklı finansalları çeker.
+    Dönem, Net Kâr, Ciro, Özsermaye, Borç/Özsermaye, Kâr marjı hesaplar.
+    """
+    try:
+        # UFRS (financial_group='2') tercih ettim; TRY bazlı çekiyoruz
+        df = fetch_financials(
+            symbols=symbol.upper(),
+            start_year=2022,  # çok geriye gitmeye gerek yok
+            end_year=2100,
+            exchange="TRY",
+            financial_group="2"  # '1': XI_29, '2': UFRS, '3': UFRS_K
+        )
+        if df is None or len(df) == 0:
+            return {"period": "—", "summary": "⚠️ Finansal tablo bulunamadı."}
 
-        borc_orani = (borc / ozsermaye * 100) if borc and ozsermaye else None
-        kar_marji = (net_kar / ciro * 100) if net_kar and ciro else None
-
-        # --- Tarih formatı ve çeyrek hesaplama ---
-        if hasattr(last_col, "strftime"):
-            tarih = last_col.strftime("%d/%m/%Y")  # Türk tarih formatı
-            ay = int(last_col.strftime("%m"))
-            yil = int(last_col.strftime("%Y"))
-            if 1 <= ay <= 3:
-                ceyrek = "1. Çeyrek"
-            elif 4 <= ay <= 6:
-                ceyrek = "2. Çeyrek"
-            elif 7 <= ay <= 9:
-                ceyrek = "3. Çeyrek"
-            else:
-                ceyrek = "4. Çeyrek"
-            period_text = f"{yil} {ceyrek} ({tarih})"
+        # Dönem metni: en yeni dönem ismini bul
+        period_col = 'Period' if 'Period' in df.columns else ('period' if 'period' in df.columns else None)
+        if period_col:
+            last_period = sorted(df[period_col].dropna().unique())[-1]
+            period_text = str(last_period)
+            dfl = df[df[period_col] == last_period].copy()
         else:
-            period_text = str(last_col)
+            # geniş form ise son dönem sütunu adı
+            meta_cols = ('Sembol','Symbol','Kalem','item','Grup','Group','Para','Currency')
+            period_cols = [c for c in df.columns if c not in meta_cols]
+            period_text = period_cols[-1] if period_cols else "Son dönem"
+            dfl = df.copy()
+
+        # Kalemleri çek
+        net_kar = _pick(dfl, [r"net.*k[aâ]r", r"kar", r"kâr", r"donem k[aâ]r", r"period profit"])
+        ciro    = _pick(dfl, [r"sat[iı]ş geliri", r"hasılat", r"ciro", r"revenue", r"sales"])
+        ozser   = _pick(dfl, [r"özkaynak", r"ozsermay", r"equity", r"shareholders.*equity"])
+        borc    = _pick(dfl, [r"toplam bor[cç]", r"y[uü]k[uü]ml[uü]l[uü]k", r"total liab", r"bor[çc]"])
+
+        # oranlar
+        borc_orani = None
+        if (ozser or ozser == 0) and (borc or borc == 0):
+            try:
+                borc_orani = (float(borc)/float(ozser))*100 if float(ozser)!=0 else None
+            except Exception:
+                borc_orani = None
+
+        kar_marji = None
+        if (net_kar or net_kar == 0) and (ciro or ciro == 0):
+            try:
+                kar_marji = (float(net_kar)/float(ciro))*100 if float(ciro)!=0 else None
+            except Exception:
+                kar_marji = None
+
+        def bn(v):
+            if v is None or (isinstance(v, float) and (math.isnan(v) or math.isinf(v))):
+                return None
+            try:
+                return float(v)
+            except Exception:
+                return None
 
         return {
             "period": period_text,
-            "net_kar": net_kar,
-            "ciro": ciro,
-            "ozsermaye": ozsermaye,
+            "net_kar": bn(net_kar),
+            "ciro": bn(ciro),
+            "ozsermaye": bn(ozser),
             "borc_orani": borc_orani,
             "kar_marji": kar_marji,
+            "source": "İş Yatırım (isyatirimhisse)"
         }
-
     except Exception as e:
-        print("Finansal veri hatası:", e)
-        return None
+        print("get_balance_summary (isyatirimhisse) hata:", e, flush=True)
+        return {"period": "—", "summary": "⚠️ Finansal tablo hatası."}
 
 # =============== MESAJ OLUŞTURMA ===============
 def build_message(symbol):
