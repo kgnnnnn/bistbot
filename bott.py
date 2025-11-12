@@ -186,68 +186,91 @@ def combine_recommendation(ema_sig, rsi_label):
         return "SATIŞ"
     return "NÖTR"
 
-# =============== BİLANÇO (Web Tarama + OpenAI) ===============
+# =============== BİLANÇO (Web Tarama + Google News Fallback) ===============
 from bs4 import BeautifulSoup
 
 def get_balance_summary(symbol):
     """Son bilanço haberlerini webden bulur, metni özetler."""
     symbol = symbol.upper().strip()
     api_key = os.getenv("OPENAI_API_KEY")
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+
     sources = [
         f"https://www.borsamatik.com.tr/arama/{symbol}+bilanço",
         f"https://www.finansopia.com/?s={symbol}+bilanço",
         f"https://www.paraanaliz.com/?s={symbol}+bilanço",
+        f"https://www.borsagundem.com/arama/{symbol}+bilanço",
+        f"https://www.dunya.com/arama?query={symbol}+bilanço",
+        f"https://m.bloomberght.com/arama?q={symbol}+bilanço",
     ]
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 
     try:
         all_text = ""
+
+        # --- Özel haber sitelerinde ara ---
         for url in sources:
-            r = requests.get(url, headers=headers, timeout=10)
-            if r.status_code != 200:
-                continue
-
-            soup = BeautifulSoup(r.text, "html.parser")
-            # makale linklerini bul
-            links = [a.get("href") for a in soup.find_all("a", href=True) if "bilanço" in a.get("href")]
-            links = list(dict.fromkeys(links))[:3]  # tekrarları kaldır, ilk 3 haberi al
-
-            for link in links:
-                try:
-                    if not link.startswith("http"):
-                        if "borsamatik" in url:
-                            link = "https://www.borsamatik.com.tr" + link
-                        elif "finansopia" in url:
-                            link = "https://www.finansopia.com" + link
-                        elif "paraanaliz" in url:
-                            link = "https://www.paraanaliz.com" + link
-
-                    sub = requests.get(link, headers=headers, timeout=10)
-                    sub_soup = BeautifulSoup(sub.text, "html.parser")
-
-                    # metni <p>, <article> veya <div> içinden çek
-                    paragraphs = [p.get_text(" ", strip=True) for p in sub_soup.find_all(["p", "article", "div"]) if len(p.get_text(strip=True)) > 40]
-                    content = " ".join(paragraphs)
-                    if len(content) > 300:
-                        all_text += f"\n\n{content}"
-                        break
-                except Exception as e:
-                    print("Alt link hata:", e, flush=True)
+            try:
+                r = requests.get(url, headers=headers, timeout=10)
+                if r.status_code != 200:
                     continue
 
-            if all_text.strip():
-                break  # bir kaynakta bulunduysa diğerlerini deneme
+                soup = BeautifulSoup(r.text, "html.parser")
+                # "bilanço" geçen linkleri bul
+                links = [a.get("href") for a in soup.find_all("a", href=True) if "bilanço" in a.get("href").lower()]
+                links = list(dict.fromkeys(links))[:3]
+
+                for link in links:
+                    try:
+                        if not link.startswith("http"):
+                            base = re.match(r"https?://[^/]+", url).group(0)
+                            link = base + link
+                        sub = requests.get(link, headers=headers, timeout=10)
+                        sub_soup = BeautifulSoup(sub.text, "html.parser")
+                        paragraphs = [p.get_text(" ", strip=True) for p in sub_soup.find_all(["p", "article", "div"]) if len(p.get_text(strip=True)) > 40]
+                        content = " ".join(paragraphs)
+                        if len(content) > 300:
+                            all_text += f"\n\n{content}"
+                            break
+                    except Exception as e:
+                        print("Alt link hata:", e, flush=True)
+                        continue
+
+                if all_text.strip():
+                    break
+            except Exception as e:
+                print("Kaynak hata:", e, flush=True)
+                continue
+
+        # --- Fallback: Google News ---
+        if not all_text.strip():
+            print("⚠️ Site kaynaklarında bulunamadı, Google News fallback devrede.", flush=True)
+            rss_url = f"https://news.google.com/rss/search?q={symbol}+bilanço&hl=tr&gl=TR&ceid=TR:tr"
+            r = requests.get(rss_url, timeout=8)
+            soup = BeautifulSoup(r.text, "xml")
+            items = soup.find_all("item")[:3]
+            for it in items:
+                title = it.title.text
+                link = it.link.text
+                if "bilanço" not in title.lower():
+                    continue
+                sub = requests.get(link, headers=headers, timeout=10)
+                sub_soup = BeautifulSoup(sub.text, "html.parser")
+                content = " ".join([p.get_text(" ", strip=True) for p in sub_soup.find_all("p")])
+                if len(content) > 300:
+                    all_text += f"\n\n{content}"
+                    break
 
         if not all_text.strip():
             return {"summary": "⚠️ Güncel bilanço haberi bulunamadı."}
 
         # --- OpenAI özet ---
         prompt = f"""
-Aşağıda {symbol} hissesine ait güncel bilanço haberi metni var:
+Aşağıda {symbol} hissesine ait en güncel bilanço haberi yer alıyor:
 {all_text[:4000]}
 
-Bu metne dayanarak, en fazla 3-4 cümlelik kısa bir Türkçe bilanço özeti yaz.
-Net kâr, ciro, borç, özkaynak gibi finansal yönleri belirt. 
+Bu metne dayanarak 3-4 cümlelik sade bir Türkçe bilanço özeti yaz.
+Net kâr, ciro, borç veya özkaynak gibi temel finansal noktaları belirt.
+Yıl veya çeyrek belirtme. 
 Yatırım tavsiyesi verme.
 """
         resp = requests.post(
@@ -256,7 +279,7 @@ Yatırım tavsiyesi verme.
             json={
                 "model": "gpt-4o-mini",
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 180,
+                "max_tokens": 200,
                 "temperature": 0.5,
             },
             timeout=30,
@@ -272,6 +295,7 @@ Yatırım tavsiyesi verme.
     except Exception as e:
         print("get_balance_summary hata:", e, flush=True)
         return {"summary": "⚠️ Bilanço verisi alınamadı."}
+
 
 ##-------------------------MESAJ OLUŞTURMA-------------------------##
 def build_message(symbol):
