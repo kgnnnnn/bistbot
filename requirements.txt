@@ -2,3 +2,4 @@ requests
 yfinance
 flask
 openai>=1.3.0
+beautifulsoup4
