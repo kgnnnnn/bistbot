@@ -585,9 +585,8 @@ def alarm_check_loop():
 # =============== ANA DÖNGÜ ===============
 def main():
     print("🚀 Kriptos Borsa Botu aktif!", flush=True)
-    # otomatik favori thread'i
+
     Thread(target=send_favorite_summaries_loop, daemon=True).start()
-    # alarm kontrol thread'i
     Thread(target=alarm_check_loop, daemon=True).start()
 
     last_update_id = None    
@@ -596,118 +595,134 @@ def main():
     alarms = load_alarms()
     portföy = load_portfoy()
 
+    # ----------------- GEÇERLİ HİSSE DOGRULAMA -----------------
+    def is_valid_symbol(sym):
+        sym = sym.upper()
+        return sym.isalpha() and 2 <= len(sym) <= 5
+
+
     while True:
         updates = get_updates(last_update_id)
         if not updates:
             time.sleep(0.8)
             continue
+
         results = updates.get("result", [])
         results.sort(key=lambda x: x.get("update_id", 0))
+
         for item in results:
             uid = item.get("update_id")
             if uid in processed:
                 continue
+
             processed.add(uid)
             last_update_id = uid + 1
+
             msg_data = item.get("message", {})
             chat_id = msg_data.get("chat", {}).get("id")
             text = (msg_data.get("text") or "").strip()
+
             if not chat_id or not text:
                 continue
 
-            # ---- /start ----
+            # ========================= /start =========================
             if text.lower() == "/start":
                 msg = (
                     "👋 <b>Kriptos BIST100 Takip Botu'na Hoş Geldin!</b>\n\n"
-                    "💬 Sadece hisse kodunu (örnek: ASELS, THYAO...) yazman yeterli.\n\n"
-                    "💡 Algoritmamız fiyat, güncel haberler ve teknik görünümü özetler.\n\n"
-                    "🤖 Yapay zeka destekli algoritmamız RSI ve EMA indikatör analizleri yapar.\n\n"
-                    "⚙️ Veriler: TradingView & Yahoo Finance'den sağlanmaktadır.\n\n"
-                    "❗️UYARI: Bilgiler kesinlikle YATIRIM TAVSİYESİ değildir!\n\n"
-                    "📊 Komut örneği: <b>ASELS</b>\n\n"
+                    "💬 Sadece hisse kodunu yaz: <b>ASELS</b>, <b>THYAO</b>...\n"
+                    "🤖 Bot fiyat + haber + teknik analiz + AI yorumunu getirir.\n\n"
                     "⭐ Favori komutları:\n"
-                    "/favori ekle ASELS\n"
-                    "/favori sil ASELS\n"
-                    "/favori liste\n\n"
+                    "<code>/favori</code> ekle ASELS\n"
+                    "<code>/favori</code> sil ASELS\n"
+                    "<code>/favori</code> liste\n\n"
                     "🔔 Alarm komutları:\n"
-                    "/alarm ekle ASELS 190\n"
-                    "/alarm sil ASELS 190\n"
-                    "/alarm liste\n\n"
+                    "<code>/alarm</code> ekle ASELS 190\n"
+                    "<code>/alarm</code> sil ASELS 190\n"
+                    "<code>/alarm</code> liste\n\n"
                     "📦 Portföy komutları:\n"
-                    "/portföy ekle ASELS 100 (LOT adeti) 54.80 (alış maliyeti)\n"
-                    "/portföy göster  —  Portföyünü, anlık değerini ve K/Z gösterir\n"
-                    "/portföy sil ASELS  —  Hisseyi portföyden kaldırır\n\n"
+                    "<code>/portföy</code> ekle ASELS 100 (LOT) 54.80 (Maliyet)\n"
+                    "<code>/portföy</code> göster\n"
+                    "<code>/portföy</code> sil ASELS\n"
                 )
                 send_message(chat_id, msg)
                 continue
 
-            # ---- /favori komutları ----
+
+            # ========================= FAVORİ =========================
             if text.lower().startswith("/favori"):
                 parts = text.split()
                 cmd = parts[1] if len(parts) > 1 else None
 
                 if cmd == "ekle" and len(parts) >= 3:
                     sym = parts[2].upper()
-                    if not sym.isalpha():
-                        send_message(chat_id, "⚠️ Lütfen geçerli bir hisse kodu girin. (Örn: ASELS)")
+
+                    if not is_valid_symbol(sym):
+                        send_message(chat_id, "⚠️ Lütfen hisse kodunu doğru giriniz. Örnek: ASELS / asels")
                         continue
+
                     favs = favorites.get(str(chat_id), [])
                     if sym not in favs:
                         favs.append(sym)
                         favorites[str(chat_id)] = favs
                         save_favorites(favorites)
-                        send_message(chat_id, f"✅ <b>{sym}</b> favorilerine eklendi.")
+                        send_message(chat_id, f"✅ <b>{sym}</b> favorilere eklendi.")
                     else:
-                        send_message(chat_id, f"ℹ️ <b>{sym}</b> zaten favorilerinde mevcut.")
+                        send_message(chat_id, f"ℹ️ <b>{sym}</b> zaten favorilerde.")
                     continue
 
                 elif cmd == "sil" and len(parts) >= 3:
                     sym = parts[2].upper()
                     favs = favorites.get(str(chat_id), [])
+
                     if sym in favs:
                         favs.remove(sym)
                         favorites[str(chat_id)] = favs
                         save_favorites(favorites)
-                        send_message(chat_id, f"🗑️ <b>{sym}</b> favorilerinden kaldırıldı.")
+                        send_message(chat_id, f"🗑️ <b>{sym}</b> favorilerden silindi.")
                     else:
-                        send_message(chat_id, f"⚠️ <b>{sym}</b> favorilerinde bulunamadı.")
+                        send_message(chat_id, f"⚠️ <b>{sym}</b> favorilerde bulunamadı.")
                     continue
 
                 elif cmd in ["liste", "goster"]:
                     favs = favorites.get(str(chat_id), [])
                     if not favs:
-                        send_message(chat_id, "⭐ Henüz favorin yok. Örnek: /favori ekle ASELS")
+                        send_message(chat_id, "⭐ Favorin yok. Örnek:\n<code>/favori</code> ekle ASELS")
                     else:
                         fav_text = "\n".join([f"• {s}" for s in favs])
-                        send_message(chat_id, f"⭐ <b>Favori Hisselerin:</b>\n{fav_text}")
+                        send_message(chat_id, f"⭐ <b>Favoriler:</b>\n{fav_text}")
                     continue
 
                 else:
-                    send_message(
-                        chat_id,
+                    send_message(chat_id,
                         "⚙️ Kullanım:\n"
-                        "/favori ekle ASELS\n"
-                        "/favori sil ASELS\n"
-                        "/favori liste"
+                        "<code>/favori</code> ekle ASELS\n"
+                        "<code>/favori</code> sil ASELS\n"
+                        "<code>/favori</code> liste"
                     )
                     continue
 
-            # ---- /alarm komutları ----
+
+            # ========================= ALARM =========================
             if text.lower().startswith("/alarm"):
                 parts = text.split()
                 cmd = parts[1] if len(parts) > 1 else None
 
                 if cmd == "ekle" and len(parts) >= 4:
                     sym = parts[2].upper()
+
+                    if not is_valid_symbol(sym):
+                        send_message(chat_id, "⚠️ Lütfen hisse kodunu doğru giriniz. Örnek: ASELS / asels")
+                        continue
+
                     try:
                         target = float(parts[3].replace(",", "."))
-                    except ValueError:
-                        send_message(chat_id, "⚠️ Hedef fiyat sayısal olmalı.")
+                    except:
+                        send_message(chat_id, "⚠️ Hedef fiyat sayı olmalı.")
                         continue
 
                     info = get_price(sym)
-                    if not info or not info.get("fiyat"):
-                        send_message(chat_id, f"⚠️ {sym} için fiyat alınamadı.")
+                    if not info:
+                        send_message(chat_id, f"⚠️ {sym} fiyat bulunamadı.")
                         continue
 
                     current = float(info["fiyat"])
@@ -716,82 +731,86 @@ def main():
 
                     uid_key = str(chat_id)
                     user_alarms = alarms.get(uid_key, [])
-                    exists = any(a.get("symbol") == sym and float(a.get("target")) == target for a in user_alarms)
+
+                    exists = any(a["symbol"] == sym and float(a["target"]) == target for a in user_alarms)
                     if exists:
-                        send_message(chat_id, f"ℹ️ {sym} için {target} TL alarmı zaten var.")
+                        send_message(chat_id, f"ℹ️ Bu alarm zaten kayıtlı.")
                         continue
 
                     user_alarms.append({"symbol": sym, "target": target, "direction": direction})
                     alarms[uid_key] = user_alarms
                     save_alarms(alarms)
+
                     send_message(chat_id, f"🔔 <b>{sym}</b> için {target} TL ({dir_text}) alarmı kaydedildi.")
                     continue
 
-                elif cmd == "sil" and len(parts) >= 4:
-                    sym = parts[2].upper()
-                    try:
-                        target = float(parts[3].replace(",", "."))
-                    except ValueError:
-                        send_message(chat_id, "⚠️ Hedef fiyat sayısal olmalı.")
-                        continue
-                    uid_key = str(chat_id)
-                    user_alarms = alarms.get(uid_key, [])
-                    new_list = [a for a in user_alarms if not (a.get("symbol") == sym and float(a.get("target")) == target)]
-                    if len(new_list) == len(user_alarms):
-                        send_message(chat_id, f"⚠️ {sym} için {target} TL alarmı bulunamadı.")
-                    else:
-                        alarms[uid_key] = new_list
-                        save_alarms(alarms)
-                        send_message(chat_id, f"🗑️ {sym} için {target} TL alarmı silindi.")
-                    continue
 
                 elif cmd in ["liste", "goster"]:
                     uid_key = str(chat_id)
                     user_alarms = alarms.get(uid_key, [])
+
                     if not user_alarms:
-                        send_message(chat_id, "🔔 Aktif alarmın yok.")
+                        send_message(chat_id, "🔔 Aktif alarm yok.")
                     else:
-                        lines = ["🔔 <b>Aktif Alarmların:</b>"]
+                        lines = ["🔔 <b>Alarmların:</b>"]
                         for a in user_alarms:
-                            sym = a.get("symbol")
-                            target = a.get("target")
-                            direction = a.get("direction")
-                            dir_text = "üzeri" if direction == "up" else "altı"
-                            lines.append(f"• {sym} — {target} TL ({dir_text})")
+                            sym = a["symbol"]
+                            t = a["target"]
+                            d = "üzeri" if a["direction"] == "up" else "altı"
+                            lines.append(f"• {sym} — {t} TL ({d})")
                         send_message(chat_id, "\n".join(lines))
                     continue
 
+
+                elif cmd == "sil" and len(parts) >= 4:
+                    sym = parts[2].upper()
+                    target = float(parts[3].replace(",", "."))
+                    uid_key = str(chat_id)
+
+                    user_alarms = alarms.get(uid_key, [])
+                    new_list = [a for a in user_alarms if not (a["symbol"] == sym and float(a["target"]) == target)]
+
+                    if len(new_list) == len(user_alarms):
+                        send_message(chat_id, f"⚠️ Alarm bulunamadı.")
+                    else:
+                        alarms[uid_key] = new_list
+                        save_alarms(alarms)
+                        send_message(chat_id, "🗑️ Alarm silindi.")
+                    continue
+
+
                 else:
-                    send_message(
-                        chat_id,
+                    send_message(chat_id,
                         "🔔 Kullanım:\n"
-                        "/alarm ekle ASELS 190\n"
-                        "/alarm sil ASELS 190\n"
-                        "/alarm liste"
+                        "<code>/alarm</code> ekle ASELS 190\n"
+                        "<code>/alarm</code> sil ASELS 190\n"
+                        "<code>/alarm</code> liste"
                     )
                     continue
 
-            # ---- /portföy komutları ----
+
+            # ========================= PORTFÖY =========================
             low = text.lower()
             if low.startswith("/portfoy") or low.startswith("/portföy"):
-                clean = (
-                    text.replace("Ö", "ö")
-                    .replace("O", "o")
-                    .replace("PORTFOY", "portföy")
-                    .replace("portfoy", "portföy")
-                )
+
+                clean = text.replace("PORTFOY","portföy").replace("portfoy","portföy")
                 parts = clean.split()
                 cmd = parts[1] if len(parts) > 1 else None
                 uid_key = str(chat_id)
 
-                # /portföy ekle ASELS 100 54.8
+                # -------- EKLE --------
                 if cmd == "ekle" and len(parts) >= 5:
                     sym = parts[2].upper()
+
+                    if not is_valid_symbol(sym):
+                        send_message(chat_id, "⚠️ Lütfen hisse kodunu doğru giriniz. Örnek: ASELS / asels")
+                        continue
+
                     try:
                         adet = float(parts[3].replace(",", "."))
                         maliyet = float(parts[4].replace(",", "."))
-                    except Exception:
-                        send_message(chat_id, "⚠️ Kullanım: /portföy ekle ASELS 100 54.8")
+                    except:
+                        send_message(chat_id, "⚠️ Kullanım: <code>/portföy</code> ekle ASELS 100 54.8")
                         continue
 
                     if adet <= 0 or maliyet <= 0:
@@ -799,34 +818,27 @@ def main():
                         continue
 
                     user_p = portföy.get(uid_key, {})
-                    pos = user_p.get(sym, {"adet": 0.0, "maliyet": 0.0})
+                    pos = user_p.get(sym, {"adet": 0, "maliyet": 0})
 
-                    eski_adet = pos["adet"]
-                    eski_maliyet = pos["maliyet"]
-
-                    yeni_adet = eski_adet + adet
-                    toplam = eski_adet * eski_maliyet + adet * maliyet
-                    yeni_maliyet = toplam / yeni_adet if yeni_adet > 0 else 0
+                    yeni_adet = pos["adet"] + adet
+                    toplam = pos["adet"] * pos["maliyet"] + adet * maliyet
+                    yeni_maliyet = toplam / yeni_adet
 
                     user_p[sym] = {"adet": yeni_adet, "maliyet": yeni_maliyet}
                     portföy[uid_key] = user_p
                     save_portfoy(portföy)
 
-                    send_message(
-                        chat_id,
-                        f"📦 <b>{sym}</b> güncellendi.\n"
-                        f"Toplam lot: <b>{yeni_adet:.2f}</b>\n"
-                        f"Ortalama maliyet: <b>{yeni_maliyet:.2f} TL</b>"
-                    )
+                    send_message(chat_id, f"📦 <b>{sym}</b> güncellendi.\nLot: <b>{yeni_adet:.0f}</b>\nMaliyet: <b>{yeni_maliyet:.2f} TL</b>")
                     continue
 
-                # /portföy goster veya liste
-                elif cmd in ["goster", "göster", "liste"]:
+
+                # -------- LİSTE / GÖSTER --------
+                elif cmd in ["liste", "goster", "göster"]:
                     user_p = portföy.get(uid_key, {})
+
                     if not user_p:
-                        send_message(
-                            chat_id,
-                            "📦 Portföyünde kayıtlı hisse yok. Örnek: /portföy ekle ASELS 100 54.8"
+                        send_message(chat_id,
+                            "📦 Portföy boş. Örnek:\n<code>/portföy</code> ekle ASELS 100 54.8"
                         )
                         continue
 
@@ -834,68 +846,59 @@ def main():
 
                     genel_maliyet = 0
                     genel_deger = 0
-                    hisse_kz_list = []  # grafik için
+                    kz_list = []
 
                     for sym, pos in user_p.items():
-                        adet = float(pos.get("adet", 0))
-                        maliyet = float(pos.get("maliyet", 0))
-                        toplam_maliyet = adet * maliyet
+                        adet = pos["adet"]
+                        maliyet = pos["maliyet"]
+                        toplam = adet * maliyet
 
                         info = get_price(sym)
-                        fiyat = info.get("fiyat") if info else None
-                        anlik_deger = fiyat * adet if fiyat is not None else None
+                        fiyat = info["fiyat"] if info else None
 
-                        if anlik_deger is not None:
-                            kar_zarar = anlik_deger - toplam_maliyet
-                            yuzde = (kar_zarar / toplam_maliyet * 100) if toplam_maliyet > 0 else 0
-                            kz_emoji = "🟢" if kar_zarar >= 0 else "🔴"
+                        if fiyat:
+                            anlik = fiyat * adet
+                            kz = anlik - toplam
+                            genel_maliyet += toplam
+                            genel_deger += anlik
+                            kz_list.append((sym, kz))
 
-                            genel_maliyet += toplam_maliyet
-                            genel_deger += anlik_deger
-
-                            hisse_kz_list.append((sym, kar_zarar))
+                            yuzde = (kz / toplam) * 100 if toplam > 0 else 0
+                            kz_emoji = "🟢" if kz >= 0 else "🔴"
 
                             lines.append(
                                 f"📌 <b>{sym}</b>\n"
                                 f"   • Lot: <b>{adet:.0f}</b>\n"
                                 f"   • Maliyet: <b>{maliyet:.2f} TL</b>\n"
                                 f"   • Anlık: <b>{format_price(fiyat)} TL</b>\n"
-                                f"   • Değer: <b>{format_price(anlik_deger)} TL</b>\n"
-                                f"   • {kz_emoji} K/Z: <b>{kar_zarar:.2f} TL (%{yuzde:.2f})</b>\n"
+                                f"   • Değer: <b>{format_price(anlik)} TL</b>\n"
+                                f"   • {kz_emoji} K/Z: <b>{kz:.2f} TL (%{yuzde:.2f})</b>\n"
                             )
                         else:
-                            lines.append(
-                                f"📌 <b>{sym}</b>\n"
-                                f"   • Lot: <b>{adet:.0f}</b>\n"
-                                f"   • Maliyet: <b>{maliyet:.2f} TL</b>\n"
-                                f"   • ❌ Anlık fiyat alınamadı\n"
-                            )
+                            lines.append(f"📌 <b>{sym}</b> — ❌ Fiyat alınamadı\n")
 
-                    # GENEL PORTFÖY
                     genel_kz = genel_deger - genel_maliyet
                     genel_yuzde = (genel_kz / genel_maliyet * 100) if genel_maliyet > 0 else 0
-                    g_emoji = "🟢" if genel_kz >= 0 else "🔴"
+                    gemoji = "🟢" if genel_kz >= 0 else "🔴"
 
                     lines.append("——————————————")
-                    lines.append(f"💰 <b>Toplam Maliyet:</b> {format_price(genel_maliyet)} TL")
-                    lines.append(f"📊 <b>Portföy Değeri:</b> {format_price(genel_deger)} TL")
-                    lines.append(f"{g_emoji} <b>Genel Kar/Zarar:</b> {genel_kz:.2f} TL (%{genel_yuzde:.2f})")
+                    lines.append(f"💰 Toplam Maliyet: {format_price(genel_maliyet)} TL")
+                    lines.append(f"📊 Portföy Değeri: {format_price(genel_deger)} TL")
+                    lines.append(f"{gemoji} Genel K/Z: {genel_kz:.2f} TL (%{genel_yuzde:.2f})")
 
-                    # AI Genel Portföy Yorumu
-                    ai_prompt_genel = (
-                        "Aşağıdaki veriler bir yatırımcının Borsa İstanbul portföyüne aittir. "
-                        "Verilere dayanarak profesyonel bir finans analisti gibi kısa, net ve okunabilir bir portföy değerlendirmesi yap. "
-                        "Yalnızca analiz et; kesin öneri, yönlendirme, al-sat tavsiyesi verme.\n\n"
-                        "Veriler:\n"
-                        f"• Toplam maliyet: {genel_maliyet:.2f} TL\n"
-                        f"• Güncel değer: {genel_deger:.2f} TL\n"
-                        f"• Kar/Zarar: {genel_kz:.2f} TL (%{genel_yuzde:.2f})\n\n"
-                        "Analizi şu formatta yaz:\n"
-                        "📌 Genel Durum: Portföyün mevcut niteliğini profesyonel bir tonda özetle.\n"
-                        "📊 Risk Görünümü: Volatilite ve yoğunlaşma riskini değerlendir.\n"
-                        "📈 Performans Yapısı: Güçlü ve zayıf noktaları belirt.\n"
-                        "🧩 Dağılım Yorumu: Portföy çeşitliliği hakkında yorum yap.\n\n"
-                        "Son olarak yatırım tavsiyesi içermeyen kısa, analitik bir sonuç paragrafı ekle."
+                    # ---------------- AI PORTFÖY YORUMU (PROFESYONEL) ----------------
+                    ai_prompt = (
+                        "Aşağıda bir Borsa İstanbul portföyü verileri bulunmaktadır. "
+                        "Profesyonel bir finans analisti gibi net, kısa ve analitik bir portföy değerlendirmesi yap. "
+                        "Öneri, yönlendirme veya tavsiye verme.\n\n"
+                        f"Toplam maliyet: {genel_maliyet:.2f} TL\n"
+                        f"Güncel değer: {genel_deger:.2f} TL\n"
+                        f"Kar/Zarar: {genel_kz:.2f} TL (%{genel_yuzde:.2f})\n\n"
+                        "Yorum formatı:\n"
+                        "• Genel Durum\n"
+                        "• Risk Görünümü\n"
+                        "• Portföy Yapısı\n"
+                        "• Sonuç (kısa)"
                     )
 
                     try:
@@ -904,121 +907,93 @@ def main():
                             headers={"Authorization": "Bearer " + os.getenv("OPENAI_API_KEY")},
                             json={
                                 "model": "gpt-4o-mini",
-                                "messages": [{"role": "user", "content": ai_prompt_genel}],
-                                "max_tokens": 200,
-                            },
+                                "messages": [{"role": "user", "content": ai_prompt}],
+                                "max_tokens": 600,
+                            }
                         )
-                        genel_ai_yorum = r.json()["choices"][0]["message"]["content"]
-                    except Exception:
-                        genel_ai_yorum = "⚠️ AI portföy analizi yapılamadı."
+                        ai_comment = r.json()["choices"][0]["message"]["content"]
+                    except:
+                        ai_comment = "⚠️ AI portföy yorumu oluşturulamadı."
 
-                    lines.append("\n🤖 <b>Kriptos AI Genel Portföy Yorumu </b>\n\n" + genel_ai_yorum)
+                    lines.append("\n🤖 <b>Kriptos AI Portföy Yorumu</b>\n" + ai_comment)
 
-                    # --- GRAFİK OLUŞTUR (PNG) ---
+                    # ---------------- PNG — PROFESYONEL ----------------
                     try:
-                        names = [x[0] for x in hisse_kz_list]
-                        values = [x[1] for x in hisse_kz_list]
+                        names = [x[0] for x in kz_list]
+                        values = [x[1] for x in kz_list]
 
                         if names:
-                            plt.figure(figsize=(10, 6), dpi=150)
+                            plt.figure(figsize=(10, 5), dpi=160)
                             ax = plt.gca()
 
-                            # Arka plan ve grid
                             ax.set_facecolor("white")
-                            ax.grid(axis="y", linestyle="--", linewidth=0.6, color="#dddddd", alpha=0.7)
+                            ax.grid(axis="y", linestyle="--", linewidth=0.5, alpha=0.6)
 
-                            # Kar/zarar renkleri
                             colors = ["#27ae60" if v >= 0 else "#c0392b" for v in values]
 
-                            bars = plt.bar(
-                                names,
-                                values,
-                                color=colors,
-                                edgecolor="#222222",
-                                linewidth=0.8
-                            )
+                            bars = plt.bar(names, values, color=colors, edgecolor="#333", linewidth=0.8)
 
                             today = datetime.now().strftime("%d.%m.%Y")
-                            plt.title(
-                                f"📊 Hisse Bazlı Kar/Zarar — {today}",
-                                fontsize=15,
-                                fontweight="bold"
-                            )
+                            plt.title(f"Hisse Bazlı Kar/Zarar — {today}", fontsize=14, fontweight="bold")
+
                             plt.ylabel("TL")
 
-                            # Bar üstüne değer yaz
                             for bar, val in zip(bars, values):
-                                plt.text(
-                                    bar.get_x() + bar.get_width() / 2,
-                                    bar.get_height(),
-                                    f"{val:.0f}",
-                                    ha="center",
-                                    va="bottom",
-                                    fontsize=10,
-                                    fontweight="bold",
-                                    color="#333333",
-                                )
+                                plt.text(bar.get_x() + bar.get_width()/2, bar.get_height(),
+                                         f"{val:.0f}", ha="center", va="bottom",
+                                         fontsize=9, fontweight="bold")
 
-                            # İmza
-                            plt.text(
-                                0.5,
-                                -0.15,
-                                "Kriptos AI Tarafından Hazırlanmıştır",
-                                fontsize=12,
-                                fontstyle="italic",
-                                fontweight="bold",
-                                color="#555555",
-                                ha="center",
-                                transform=plt.gca().transAxes,
-                            )
+                            plt.tight_layout()
 
                             graph_path = f"data/portfoy_graph_{uid_key}.png"
-                            plt.tight_layout()
                             plt.savefig(graph_path, bbox_inches="tight")
                             plt.close()
 
                             with open(graph_path, "rb") as img:
-                                requests.post(
-                                    URL + "sendPhoto",
-                                    data={"chat_id": chat_id},
-                                    files={"photo": img},
-                                )
+                                requests.post(URL + "sendPhoto", data={"chat_id": chat_id}, files={"photo": img})
                     except Exception as e:
                         print("Grafik hatası:", e)
 
-                    # SON MESAJ
                     send_message(chat_id, "\n".join(lines))
                     continue
 
-                # /portföy sil ASELS
+
+                # -------- SİL --------
                 elif cmd == "sil" and len(parts) >= 3:
                     sym = parts[2].upper()
                     user_p = portföy.get(uid_key, {})
+
                     if sym in user_p:
                         del user_p[sym]
                         portföy[uid_key] = user_p
                         save_portfoy(portföy)
-                        send_message(chat_id, f"🗑️ {sym} portföyden silindi.")
+                        send_message(chat_id, f"🗑️ {sym} silindi.")
                     else:
-                        send_message(chat_id, f"⚠️ Portföyünde {sym} bulunamadı.")
+                        send_message(chat_id, f"⚠️ Portföyde {sym} yok.")
                     continue
 
-                # Kullanım mesajı
+
                 else:
-                    send_message(
-                        chat_id,
-                        "📦 <b>Kullanım:</b>\n"
-                        "/portföy ekle ASELS 100 (LOT adeti) 54.8 (alış maliyeti)\n"
-                        "/portföy göster\n"
-                        "/portföy sil ASELS"
+                    send_message(chat_id,
+                        "📦 Kullanım:\n"
+                        "<code>/portföy</code> ekle ASELS 100 54.8\n"
+                        "<code>/portföy</code> göster\n"
+                        "<code>/portföy</code> sil ASELS"
                     )
                     continue
 
-            # ---- Hisse sorgusu ----
+
+            # ========================= HİSSE SORGUSU =========================
             symbol = text.split()[0].lstrip("/").upper()
+
+            if not is_valid_symbol(symbol):
+                send_message(chat_id, "⚠️ Lütfen hisse kodunu doğru giriniz. Örnek: ASELS / asels")
+                continue
+
             reply = build_message(symbol)
             send_message(chat_id, reply)
             time.sleep(0.8)
+
 
         time.sleep(0.5)
 
