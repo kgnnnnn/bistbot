@@ -840,39 +840,31 @@ def main():
                     lines.append(f"📊 <b>Portföy Değeri:</b> {format_price(genel_deger)} TL")
                     lines.append(f"{g_emoji} <b>Genel Kar/Zarar:</b> {genel_kz:.2f} TL (%{genel_yuzde:.2f})")
 
-# AI Genel Portföy Yorumu
-ai_prompt_genel = (
-    "Aşağıdaki veriler bir yatırımcının Borsa İstanbul portföyüne aittir. "
-    "Bu verilere dayanarak profesyonel bir finans analisti gibi kısa, net ve okunabilir "
-    "bir portföy değerlendirmesi yap. Yalnızca analiz et; kesin öneri, yönlendirme "
-    "veya al-sat tavsiyesi verme.\n\n"
-
-    "Veriler:\n"
-    f"• Toplam maliyet: {genel_maliyet:.2f} TL\n"
-    f"• Güncel değer: {genel_deger:.2f} TL\n"
-    f"• Kar/Zarar: {genel_kz:.2f} TL (%{genel_yuzde:.2f})\n\n"
-
-    "Analizi şu formatta oluştur:\n"
-    "📌 Genel Durum: Portföyün mevcut durumunu, değer kaybı/kazancı ve genel eğilimi profesyonel tonda özetle.\n"
-    "📊 Risk Görünümü: Portföyün volatilite, yoğunlaşma ve piyasa hassasiyetine dair kısa ve analitik değerlendirme yap.\n"
-    "📈 Performans Yapısı: Portföyün güçlü/zayıf yönlerini finansal bakış açısıyla belirt.\n"
-    "🧩 Dağılım Yorumu: Portföy çeşitliliği veya ağırlık dağılımının etkilerini değerlendir.\n\n"
-
-    "Son olarak yatırım tavsiyesi içermeyen; kısa, profesyonel ve analitik bir sonuç paragrafı ekle."
-)
+                    # AI Genel Portföy Yorumu
+                    ai_prompt_genel = (
+                        "Aşağıdaki veriler bir yatırımcının Borsa İstanbul portföyüne aittir. "
+                        "Verilere dayanarak profesyonel bir finans analisti gibi kısa, net ve okunabilir bir portföy değerlendirmesi yap. "
+                        "Yalnızca analiz et; kesin öneri, yönlendirme, al-sat tavsiyesi verme.\n\n"
+                        "Veriler:\n"
+                        f"• Toplam maliyet: {genel_maliyet:.2f} TL\n"
+                        f"• Güncel değer: {genel_deger:.2f} TL\n"
+                        f"• Kar/Zarar: {genel_kz:.2f} TL (%{genel_yuzde:.2f})\n\n"
+                        "Analizi şu formatta yaz:\n"
+                        "📌 *Genel Durum:* Portföyün mevcut niteliğini profesyonel bir tonda özetle.\n"
+                        "📊 *Risk Görünümü:* Volatilite ve yoğunlaşma riskini değerlendir.\n"
+                        "📈 *Performans Yapısı:* Güçlü ve zayıf noktaları belirt.\n"
+                        "🧩 *Dağılım Yorumu:* Portföy çeşitliliği hakkında yorum yap.\n\n"
+                        "Son olarak yatırım tavsiyesi içermeyen kısa, analitik bir sonuç paragrafı ekle."
+                    )
 
                     try:
                         r = requests.post(
                             "https://api.openai.com/v1/chat/completions",
-                            headers={
-                                "Authorization": "Bearer " + os.getenv("OPENAI_API_KEY")
-                            },
+                            headers={"Authorization": "Bearer " + os.getenv("OPENAI_API_KEY")},
                             json={
                                 "model": "gpt-4o-mini",
-                                "messages": [
-                                    {"role": "user", "content": ai_prompt_genel}
-                                ],
-                                "max_tokens": 100,
+                                "messages": [{"role": "user", "content": ai_prompt_genel}],
+                                "max_tokens": 200,
                             },
                         )
                         genel_ai_yorum = r.json()["choices"][0]["message"]["content"]
