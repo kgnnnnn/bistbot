@@ -170,18 +170,30 @@ def get_price(symbol):
         time.sleep(random.uniform(0.3, 0.6))
         ticker = yf.Ticker(symbol.upper() + ".IS")
         info = ticker.info
-        if not info or not info.get("currentPrice"):
+
+        price = info.get("currentPrice")
+        if not price:
             return None
+
+        # Tüm fiyatlar float olarak dönsün
+        def safe_float(v):
+            try:
+                return float(v) if v is not None else None
+            except:
+                return None
+
         return {
-            "fiyat": info.get("currentPrice"),
-            "acilis": info.get("open"),
-            "kapanis": info.get("previousClose"),
-            "tavan": info.get("dayHigh"),
-            "taban": info.get("dayLow"),
+            "fiyat": safe_float(price),
+            "acilis": safe_float(info.get("open")),
+            "kapanis": safe_float(info.get("previousClose")),
+            "tavan": safe_float(info.get("dayHigh")),
+            "taban": safe_float(info.get("dayLow")),
         }
+
     except Exception as e:
         print("get_price hata:", e, flush=True)
         return None
+
 
 # =============== TRADINGVIEW (RSI, EMA50/EMA200) ===============
 TV_URL = "https://tradingview-real-time.p.rapidapi.com/technicals/summary"
