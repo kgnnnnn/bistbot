@@ -582,7 +582,7 @@ def main():
                     "💡 Algoritmamız fiyat, güncel haberler ve teknik görünümü özetler.\n\n"
                     "🤖 Yapay zeka destekli algoritmamız RSI ve EMA indikatör analizleri yapar.\n\n"
                     "⚙️ Veriler: TradingView & Yahoo Finance'den sağlanmaktadır.\n\n"
-                    "❗️ UYARI: Bilgiler kesinlikle YATIRIM TAVSİYESİ değildir!\n\n"
+                    "❗️UYARI: Bilgiler kesinlikle YATIRIM TAVSİYESİ değildir!\n\n"
                     "📊 Komut örneği: <b>ASELS</b>\n\n"
                     "⭐ Favori komutları:\n"
                     "/favori ekle ASELS\n"
@@ -594,7 +594,7 @@ def main():
                     "/alarm liste\n\n"
                     "📦 Portföy komutları:\n"
                     "/portföy ekle ASELS 100 (LOT adeti) 54.80 (alış maliyeti)\n"
-                    "/portföy goster  —  Portföyünü, anlık değerini ve K/Z gösterir\n"
+                    "/portföy göster  —  Portföyünü, anlık değerini ve K/Z gösterir\n"
                     "/portföy sil ASELS  —  Hisseyi portföyden kaldırır\n\n"
                 )
                 send_message(chat_id, msg)
@@ -850,10 +850,10 @@ def main():
                         f"• Güncel değer: {genel_deger:.2f} TL\n"
                         f"• Kar/Zarar: {genel_kz:.2f} TL (%{genel_yuzde:.2f})\n\n"
                         "Analizi şu formatta yaz:\n"
-                        "📌 *Genel Durum:* Portföyün mevcut niteliğini profesyonel bir tonda özetle.\n"
-                        "📊 *Risk Görünümü:* Volatilite ve yoğunlaşma riskini değerlendir.\n"
-                        "📈 *Performans Yapısı:* Güçlü ve zayıf noktaları belirt.\n"
-                        "🧩 *Dağılım Yorumu:* Portföy çeşitliliği hakkında yorum yap.\n\n"
+                        "📌 Genel Durum: Portföyün mevcut niteliğini profesyonel bir tonda özetle.\n"
+                        "📊 Risk Görünümü: Volatilite ve yoğunlaşma riskini değerlendir.\n"
+                        "📈 Performans Yapısı: Güçlü ve zayıf noktaları belirt.\n"
+                        "🧩 Dağılım Yorumu: Portföy çeşitliliği hakkında yorum yap.\n\n"
                         "Son olarak yatırım tavsiyesi içermeyen kısa, analitik bir sonuç paragrafı ekle."
                     )
 
@@ -871,7 +871,7 @@ def main():
                     except Exception:
                         genel_ai_yorum = "⚠️ AI portföy analizi yapılamadı."
 
-                    lines.append("\n🤖 <b>Kriptos AI Genel Portföy Yorumu:</b>\n" + genel_ai_yorum)
+                    lines.append("\n🤖 <b>Kriptos AI Genel Portföy Yorumu </b>\n\n" + genel_ai_yorum)
 
                     # --- GRAFİK OLUŞTUR (PNG) ---
                     try:
