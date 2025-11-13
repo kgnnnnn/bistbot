@@ -220,7 +220,7 @@ def analyze_news_with_ai(news_text):
             "Aşağıda Borsa İstanbul'da işlem gören bir hisseye ait son haber başlıkları bulunuyor.\n"
             "Bu başlıkları analiz et; 1-2 cümlelik kısa bir Türkçe özet oluştur ve genel piyasa hissiyatını belirt (pozitif / negatif / nötr).\n"
             "Yatırım tavsiyesi verme.\n"
-            "Yanıtını '🤖 <b>Kriptos AI Haber Analizi:</b>' etiketiyle başlat.\n\n"
+            "Yanıtını '🤖 <b>Kriptos AI Haber Analizi</b>' etiketiyle başlat.\n\n"
             f"{news_text}"
         )
 
