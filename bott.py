@@ -247,52 +247,72 @@ def analyze_news_with_ai(news_text):
         return "⚠️ AI yorum alınamadı."
 
 
-# =============== YAHOO FİYAT ===============
+# =============== YAHOO FİYAT (Borsa Açık/Kapalı Akıllı Sistem) ===============
 def get_price(symbol):
-    """Yahoo Finance - fiyatları küsuratlı ve güvenilir şekilde çeker."""
+    """
+    Borsa açıksa anlık fiyatı,
+    kapalıysa previousClose'u veren akıllı fiyat sistemi.
+    """
     try:
-        time.sleep(random.uniform(0.2, 0.5))
+        time.sleep(random.uniform(0.15, 0.35))
+        sym = symbol.upper() + ".IS"
+        t = yf.Ticker(sym)
 
-        t = yf.Ticker(symbol.upper() + ".IS")
-
-        # 1) Önce hızlı fiyat (genelde doğru ve küsuratlı)
+        # --- Hızlı veri ---
         fi = t.fast_info
-        fiyat = fi.get("last_price")
 
-        # 2) Eğer fast_info fiyat vermedi -> info'dan çek
-        if fiyat is None:
-            info = t.info
-            fiyat = info.get("currentPrice")
+        # Temel fiyatlar
+        last_price = fi.get("last_price")
+        prev_close = fi.get("previous_close")
+        market_open = fi.get("market_open")     # True / False
+        market_close = fi.get("market_close")   # True / False
+        day_high = fi.get("day_high")
+        day_low = fi.get("day_low")
+        open_price = fi.get("open")
 
-        # 3) Eğer hâlâ yoksa -> tamamen geçersiz
-        if fiyat is None:
-            return None
+        # Bazı durumlarda fast_info eksik -> info fallback
+        info = t.info
 
-        # 4) Değerleri toparla
         def sf(x):
             try:
                 return float(x) if x is not None else None
-            except Exception:
+            except:
                 return None
 
-        info = t.info  # fast_info dışında kalan alanlarda yedek
+        # --- Borsa Açık mı? ---
+        # Eğer fi.market_open bool döndüyse onu kullan
+        # Eğer yoksa: last_price değişmiyorsa -> kapalı kabul edilir
+        borsa_acik = None
 
-        acilis = fi.get("open") or info.get("open")
-        kapanis = fi.get("previous_close") or info.get("previousClose")
-        tavan = fi.get("day_high") or info.get("dayHigh")
-        taban = fi.get("day_low") or info.get("dayLow")
+        if market_open is not None:
+            borsa_acik = bool(market_open)
+        else:
+            # fallback heuristic
+            if last_price and prev_close:
+                borsa_acik = abs(last_price - prev_close) > 0.001
+
+        # --- Ana fiyat seçimi ---
+        if borsa_acik:
+            fiyat = last_price or info.get("currentPrice") or prev_close
+        else:
+            fiyat = prev_close or last_price or info.get("currentPrice")
+
+        if fiyat is None:
+            return None
 
         return {
             "fiyat": sf(fiyat),
-            "acilis": sf(acilis),
-            "kapanis": sf(kapanis),
-            "tavan": sf(tavan),
-            "taban": sf(taban),
+            "acilis": sf(open_price or info.get("open")),
+            "kapanis": sf(prev_close or info.get("previousClose")),
+            "tavan": sf(day_high or info.get("dayHigh")),
+            "taban": sf(day_low or info.get("dayLow")),
+            "borsa_acik": borsa_acik,
         }
 
     except Exception as e:
-        print("get_price hata:", e, flush=True)
+        print("get_price HATA:", e, flush=True)
         return None
+
 
 
 # =============== TRADINGVIEW (RSI, EMA50/EMA200) ===============
