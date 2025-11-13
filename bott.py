@@ -630,13 +630,13 @@ def main():
                 msg = (
                     "👋 <b>Kriptos BIST100 Takip Botu'na Hoş Geldin!</b>\n\n"
                     "💬 Sadece hisse kodunu yaz: <b>ASELS/asels</b>, <b>THYAO/thyao</b>...\n"
-                    "🤖 Bot fiyat + haber + teknik analiz + Kriptos AI yorumunu getirir.\n\n"
+                    "🤖 Bot fiyat + haber + teknik analiz + <b>Kriptos AI</b> yorumunu getirir.\n\n"
                     
                     "⭐ Favori komutları:\n"
                     "<code>/favori</code> ekle ASELS\n"
                     "<code>/favori</code> sil ASELS\n"
                     "<code>/favori</code> liste\n\n"
-                    "Favorilenen hisselerin bilgileri her gün sabah 10:00 ve akşam 17:00'da size otomatik Kriptos AI tarafından iletilir.\n\n"
+                    "👉 Favorilenen hisselerin bilgileri her gün sabah 10:00 ve akşam 17:00'da size otomatik Kriptos AI tarafından iletilir.\n\n"
                     
                     "🔔 Alarm komutları:\n"
                     "<code>/alarm</code> ekle ASELS 190\n"
@@ -644,7 +644,7 @@ def main():
                     "<code>/alarm</code> liste\n\n"
                     
                     "📦 Portföy komutları:\n"
-                    "<code>/portföy</code> ekle ASELS 100 (LOT) 54.80 (Maliyet)\n"
+                    "<code>/portföy</code> ekle ASELS 100 (LOT) 54.80 (Maliyet). Şeklinde giriniz.\n"
                     "<code>/portföy</code> göster\n"
                     "<code>/portföy</code> sil ASELS\n"
                 )
@@ -980,9 +980,10 @@ def main():
                 else:
                     send_message(chat_id,
                         "📦 Kullanım:\n"
-                        "<code>/portföy</code> ekle ASELS 100 54.8\n"
-                        "<code>/portföy</code> göster\n"
+                        "<code>/portföy</code> ekle ASELS 100(LOT Adedi) 54.8(Maliyet). Şeklinde giriniz.\n"
                         "<code>/portföy</code> sil ASELS"
+                        "<code>/portföy</code> göster\n"
+                        
                     )
                     continue
 
