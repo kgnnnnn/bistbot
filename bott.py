@@ -99,6 +99,16 @@ def format_number(num):
     except Exception:
         return None
 
+def format_price(num):
+    """Fiyatları 2 basamaklı (182.34) göstermek için."""
+    try:
+        if num is None:
+            return "—"
+        return f"{float(num):.2f}"
+    except:
+        return str(num)
+
+
 # =============== HABERLER (Google RSS) ===============
 import xml.etree.ElementTree as ET
 
@@ -165,28 +175,52 @@ def analyze_news_with_ai(news_text):
 
 # =============== YAHOO FİYAT ===============
 def get_price(symbol):
-    """Yahoo Finance - küsuratlı fiyat, açılış, kapanış bilgilerini çeker (fast_info kullanır)."""
+    """Yahoo Finance - fiyatları küsuratlı ve güvenilir şekilde çeker."""
     try:
-        time.sleep(random.uniform(0.2, 0.4))
+        time.sleep(random.uniform(0.2, 0.5))
 
-        ticker = yf.Ticker(symbol.upper() + ".IS")
-        fi = ticker.fast_info  # hızlı ve doğru fiyat kaynağı
+        t = yf.Ticker(symbol.upper() + ".IS")
 
+        # 1) Önce hızlı fiyat (genelde doğru ve küsuratlı)
+        fi = t.fast_info
         fiyat = fi.get("last_price")
+
+        # 2) Eğer fast_info fiyat vermedi -> info'dan çek
+        if fiyat is None:
+            info = t.info
+            fiyat = info.get("currentPrice")
+
+        # 3) Eğer hâlâ yoksa -> tamamen geçersiz
         if fiyat is None:
             return None
 
+        # 4) Değerleri toparla
+        def sf(x):
+            try:
+                return float(x) if x is not None else None
+            except:
+                return None
+
+        # Önce fast_info’dan al, yoksa info’dan al
+        info = t.info
+
+        acilis = fi.get("open") or info.get("open")
+        kapanis = fi.get("previous_close") or info.get("previousClose")
+        tavan = fi.get("day_high") or info.get("dayHigh")
+        taban = fi.get("day_low") or info.get("dayLow")
+
         return {
-            "fiyat": fiyat,                        # küsuratlı fiyat
-            "acilis": fi.get("open"),
-            "kapanis": fi.get("previous_close"),
-            "tavan": fi.get("day_high"),
-            "taban": fi.get("day_low"),
+            "fiyat": sf(fiyat),
+            "acilis": sf(acilis),
+            "kapanis": sf(kapanis),
+            "tavan": sf(tavan),
+            "taban": sf(taban),
         }
 
     except Exception as e:
         print("get_price hata:", e, flush=True)
         return None
+
 
 
 
@@ -250,18 +284,17 @@ def build_message(symbol):
     tech = get_tv_analysis(symbol)
     lines = [f"💹 <b>{symbol}</b> Hisse Özeti (BIST100)"]
 
-    # --- Fiyat ---
+         # --- Fiyat ---
     if info:
-        fiyat_fmt = format_number(info['fiyat'])
-        lines.append(f"💰 Fiyat: {fiyat_fmt if fiyat_fmt is not None else info['fiyat']} TL")
-        if info.get("acilis"):
-            lines.append(f"📈 Açılış: {info['acilis']}")
-        if info.get("kapanis"):
-            lines.append(f"📉 Kapanış: {info['kapanis']}")
-        if info.get("tavan"):
-            lines.append(f"🔼 Tavan: {info['tavan']}")
-        if info.get("taban"):
-            lines.append(f"🔽 Taban: {info['taban']}")
+        lines.append(f"💰 Fiyat: {format_price(info['fiyat'])} TL")
+        if info.get("acilis") is not None:
+            lines.append(f"📈 Açılış: {format_price(info['acilis'])} TL")
+        if info.get("kapanis") is not None:
+            lines.append(f"📉 Kapanış: {format_price(info['kapanis'])} TL")
+        if info.get("tavan") is not None:
+            lines.append(f"🔼 Tavan: {format_price(info['tavan'])} TL")
+        if info.get("taban") is not None:
+            lines.append(f"🔽 Taban: {format_price(info['taban'])} TL")
 
     # --- Teknik Analiz ---
     if tech:
@@ -294,13 +327,19 @@ def build_message(symbol):
 def build_favorite_line(sym):
     info = get_price(sym)
     tech = get_tv_analysis(sym)
+
     if not info:
         return f"• {sym}: veri yok"
-    fiyat_fmt = format_number(info.get("fiyat"))
+
+    fiyat_txt = format_price(info.get("fiyat"))
     rsi_val = tech.get("rsi") if tech else None
     rsi_label = map_rsi_label(rsi_val) if rsi_val is not None else "N/A"
     ema_sig = map_ema_signal(tech.get("ema50"), tech.get("ema200")) if tech else "N/A"
-    return f"• <b>{sym}</b> — {fiyat_fmt if fiyat_fmt is not None else info.get('fiyat')} TL | RSI: {rsi_label} | EMA(50/200): {ema_sig}"
+
+    return (
+        f"• <b>{sym}</b> — {fiyat_txt} TL | "
+        f"RSI: {rsi_label} | EMA(50/200): {ema_sig}"
+    )
 
 # =============== OTOMATİK FAVORİ GÖNDERİCİ ===============
 _last_sent_marker = {"morning": None, "evening": None}
