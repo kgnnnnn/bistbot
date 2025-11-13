@@ -12,6 +12,8 @@ import xml.etree.ElementTree as ET
 import html
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
+import matplotlib.pyplot as plt
+
 
 # =============== KALICI DİSK (Render Disk) ===============
 DATA_DIR = "data"
