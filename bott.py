@@ -629,16 +629,20 @@ def main():
             if text.lower() == "/start":
                 msg = (
                     "👋 <b>Kriptos BIST100 Takip Botu'na Hoş Geldin!</b>\n\n"
-                    "💬 Sadece hisse kodunu yaz: <b>ASELS</b>, <b>THYAO</b>...\n"
-                    "🤖 Bot fiyat + haber + teknik analiz + AI yorumunu getirir.\n\n"
+                    "💬 Sadece hisse kodunu yaz: <b>ASELS/asels</b>, <b>THYAO/thyao</b>...\n"
+                    "🤖 Bot fiyat + haber + teknik analiz + Kriptos AI yorumunu getirir.\n\n"
+                    
                     "⭐ Favori komutları:\n"
                     "<code>/favori</code> ekle ASELS\n"
                     "<code>/favori</code> sil ASELS\n"
                     "<code>/favori</code> liste\n\n"
+                    "Favorilenen hisselerin bilgileri her gün sabah 10:00 ve akşam 17:00'da size otomatik Kriptos AI tarafından iletilir.\n\n"
+                    
                     "🔔 Alarm komutları:\n"
                     "<code>/alarm</code> ekle ASELS 190\n"
                     "<code>/alarm</code> sil ASELS 190\n"
                     "<code>/alarm</code> liste\n\n"
+                    
                     "📦 Portföy komutları:\n"
                     "<code>/portföy</code> ekle ASELS 100 (LOT) 54.80 (Maliyet)\n"
                     "<code>/portföy</code> göster\n"
@@ -888,17 +892,17 @@ def main():
 
                     # ---------------- AI PORTFÖY YORUMU (PROFESYONEL) ----------------
                     ai_prompt = (
-                        "Aşağıda bir Borsa İstanbul portföyü verileri bulunmaktadır. "
-                        "Profesyonel bir finans analisti gibi net, kısa ve analitik bir portföy değerlendirmesi yap. "
-                        "Öneri, yönlendirme veya tavsiye verme.\n\n"
+                        "Aşağıdaki verileri kullanarak Borsa İstanbul portföyü için çok kısa, net ve "
+                        "yalnızca analitik bir değerlendirme yap. Profesyonel bir ton kullan, "
+                        "Metin 8-10 kısa cümleden oluşsun, sade ve anlaşılır olsun.\n\n"
                         f"Toplam maliyet: {genel_maliyet:.2f} TL\n"
                         f"Güncel değer: {genel_deger:.2f} TL\n"
                         f"Kar/Zarar: {genel_kz:.2f} TL (%{genel_yuzde:.2f})\n\n"
                         "Yorum formatı:\n"
-                        "• Genel Durum\n"
-                        "• Risk Görünümü\n"
-                        "• Portföy Yapısı\n"
-                        "• Sonuç (kısa)"
+                        "📌 Genel Durum\n"
+                        "⚠️ Risk Görünümü\n"
+                        "💠 Portföy Yapısı\n"
+                        "📝 Sonuç"
                     )
 
                     try:
