@@ -968,7 +968,7 @@ def main():
                         chat_id,
                         "📦 <b>Kullanım:</b>\n"
                         "/portföy ekle ASELS 100 (LOT adeti) 54.8 (alış maliyeti)\n"
-                        "/portföy goster\n"
+                        "/portföy göster\n"
                         "/portföy sil ASELS"
                     )
                     continue
