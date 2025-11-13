@@ -248,78 +248,93 @@ def analyze_news_with_ai(news_text):
 
 
 # =============== YAHOO FİYAT (Açık/Kapalı Akıllı Sistem – Hatasız) ===============
+# =================== BIST UYUMLU — TAM FALLOUGHLU GET_PRICE ===================
 def get_price(symbol):
     """
-    Borsa açıksa anlık fiyatı,
-    kapalıysa previousClose'u veren akıllı ve güvenli fiyat sistemi.
-    currentTradingPeriod hatası vermez.
+    BIST için en doğru fiyat çekme yöntemi.
+    Borsa açıksa anlık,
+    kapalıysa gün içi son fiyat,
+    veri bozuksa fallback -> regularMarketPrice -> currentPrice -> previousClose.
     """
     try:
         time.sleep(random.uniform(0.15, 0.35))
+
         sym = symbol.upper() + ".IS"
         t = yf.Ticker(sym)
 
-        fi = t.fast_info
+        # --- Fiyat kaynakları ---
+        fi = t.fast_info or {}
+        info = t.info or {}
 
+        # Emniyetli float converter
         def sf(x):
             try:
-                return float(x) if x is not None else None
+                return float(x) if x not in [None, ""] else None
             except:
                 return None
 
-        # --- Fiyatlar ---
-        last_price   = sf(fi.get("last_price"))
-        prev_close   = sf(fi.get("previous_close"))
-        open_price   = sf(fi.get("open"))
-        day_high     = sf(fi.get("day_high"))
-        day_low      = sf(fi.get("day_low"))
+        # --- 1) Birincil fiyat (her zaman en doğru kaynak) ---
+        fiyat = sf(fi.get("last_price"))
 
-        # fallback info (bazı alanlar fast_info'da olmayabilir)
-        info = t.info if hasattr(t, "info") else {}
+        # Eğer last_price None veya 0 gelirse -> fallback
+        if not fiyat or fiyat <= 0:
+            fiyat = sf(info.get("regularMarketPrice"))
 
-        if not open_price:
-            open_price = sf(info.get("open"))
-        if not prev_close:
-            prev_close = sf(info.get("previousClose"))
-        if not day_high:
-            day_high = sf(info.get("dayHigh"))
-        if not day_low:
-            day_low = sf(info.get("dayLow"))
+        # Hâlâ yoksa -> fallback 2
+        if not fiyat or fiyat <= 0:
+            fiyat = sf(info.get("currentPrice"))
 
-        # --- Borsa Açık mı? ---
-        # fi.market_open varsa onu kullan
-        market_open_flag = fi.get("market_open")
+        # Hâlâ yoksa -> fallback 3 (kapalıysa previousClose)
+        if not fiyat or fiyat <= 0:
+            fiyat = sf(fi.get("previous_close") or info.get("previousClose"))
 
-        if market_open_flag is not None:
-            borsa_acik = bool(market_open_flag)
-        else:
-            # fallback yöntem: fiyat hareket ediyor mu?
-            if last_price and prev_close:
-                borsa_acik = abs(last_price - prev_close) > 0.001
-            else:
-                borsa_acik = False  # garantici
-
-        # --- Seçilecek fiyat ---
-        if borsa_acik:
-            fiyat = last_price or info.get("currentPrice") or prev_close
-        else:
-            fiyat = prev_close or last_price or info.get("currentPrice")
-
+        # SON çare: fiyat hâlâ yoksa -> güvenli dönüş
         if fiyat is None:
-            return None
+            return {
+                "fiyat": None,
+                "acilis": None,
+                "kapanis": None,
+                "tavan": None,
+                "taban": None,
+                "borsa_acik": None,
+            }
+
+        # --- Açılış, kapanış, tavan, taban ---
+        acilis = sf(fi.get("open") or info.get("open"))
+        kapanis = sf(fi.get("previous_close") or info.get("previousClose"))
+        tavan = sf(fi.get("day_high") or info.get("dayHigh"))
+        taban = sf(fi.get("day_low") or info.get("dayLow"))
+
+        # --- Borsa açık mı? ---
+        # Yahoo bazen "market_open" verir, bazen vermez
+        if fi.get("market_open") is not None:
+            borsa_acik = bool(fi.get("market_open"))
+        else:
+            # fallback: fiyat güncel mi kontrolü
+            if fiyat and kapanis:
+                borsa_acik = abs(fiyat - kapanis) > 0.0005
+            else:
+                borsa_acik = None
 
         return {
-            "fiyat": sf(fiyat),
-            "acilis": open_price,
-            "kapanis": prev_close,
-            "tavan": day_high,
-            "taban": day_low,
+            "fiyat": fiyat,
+            "acilis": acilis,
+            "kapanis": kapanis,
+            "tavan": tavan,
+            "taban": taban,
             "borsa_acik": borsa_acik,
         }
 
     except Exception as e:
-        print("get_price HATA:", e, flush=True)
-        return None
+        print("get_price HATA:", e)
+        return {
+            "fiyat": None,
+            "acilis": None,
+            "kapanis": None,
+            "tavan": None,
+            "taban": None,
+            "borsa_acik": None,
+        }
 
 # =============== TRADINGVIEW (RSI, EMA50/EMA200) ===============
 TV_URL = "https://tradingview-real-time.p.rapidapi.com/technicals/summary"
