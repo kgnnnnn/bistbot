@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 import matplotlib.pyplot as plt
 import matplotlib
+
 matplotlib.use("Agg")
 
 
@@ -22,7 +23,7 @@ DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
 FAVORI_FILE = os.path.join(DATA_DIR, "favoriler.json")
-ALARM_FILE  = os.path.join(DATA_DIR, "alarmlar.json")
+ALARM_FILE = os.path.join(DATA_DIR, "alarmlar.json")
 PORTFOY_FILE = os.path.join(DATA_DIR, "portfoy.json")
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -34,6 +35,7 @@ URL = f"https://api.telegram.org/bot{BOT_TOKEN}/"
 # Istanbul time helper (UTC+3). Fully timezone-aware.
 IST_UTC_OFFSET_HOURS = 3
 
+
 def now_istanbul():
     tr_tz = timezone(timedelta(hours=IST_UTC_OFFSET_HOURS))
     return datetime.now(timezone.utc).astimezone(tr_tz)
@@ -42,21 +44,32 @@ def now_istanbul():
 # =============== TELEGRAM ===============
 def get_updates(offset=None):
     try:
-        r = requests.get(URL + "getUpdates", params={"timeout": 100, "offset": offset}, timeout=100)
+        r = requests.get(
+            URL + "getUpdates",
+            params={"timeout": 100, "offset": offset},
+            timeout=100,
+        )
         return r.json()
     except Exception as e:
         print("get_updates error:", e, flush=True)
         return {}
 
+
 def send_message(chat_id, text):
     try:
         requests.post(
             URL + "sendMessage",
-            params={"chat_id": chat_id, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True},
+            params={
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True,
+            },
             timeout=10,
         )
     except Exception as e:
         print("Send error:", e, flush=True)
+
 
 def send_photo(chat_id, path):
     try:
@@ -64,11 +77,10 @@ def send_photo(chat_id, path):
             requests.post(
                 URL + "sendPhoto",
                 files={"photo": img},
-                data={"chat_id": chat_id}
+                data={"chat_id": chat_id},
             )
     except Exception as e:
         print("Foto gönderme hatası:", e)
-
 
 
 # =============== FAVORİ SİSTEMİ ===============
@@ -81,6 +93,7 @@ def load_favorites():
     except Exception as e:
         print("Favori yükleme hatası:", e, flush=True)
         return {}
+
 
 def save_favorites(data):
     try:
@@ -101,6 +114,7 @@ def load_alarms():
         print("Alarm yükleme hatası:", e, flush=True)
         return {}
 
+
 def save_alarms(data):
     try:
         with open(ALARM_FILE, "w", encoding="utf-8") as f:
@@ -116,14 +130,15 @@ def load_portfoy():
             return {}
         with open(PORTFOY_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
-    except:
+    except Exception:
         return {}
+
 
 def save_portfoy(data):
     try:
         with open(PORTFOY_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-    except:
+    except Exception:
         pass
 
 
@@ -142,18 +157,20 @@ def format_number(num):
     except Exception:
         return None
 
+
 def format_price(num):
     """Fiyatları 2 basamaklı (182.34) göstermek için."""
     try:
         if num is None:
             return "—"
         return f"{float(num):.2f}"
-    except:
+    except Exception:
         return str(num)
 
 
 # =============== HABERLER (Google RSS) ===============
 import xml.etree.ElementTree as ET
+
 
 def get_news(symbol):
     """Google News RSS üzerinden hisseye ait son 3 haberi döndürür."""
@@ -175,7 +192,11 @@ def get_news(symbol):
         for item in items:
             title = (item.find("title").text or "").strip()
             link = (item.find("link").text or "").strip()
-            pub = (item.find("pubDate").text or "").split("+")[0].strip() if item.find("pubDate") is not None else ""
+            pub = (
+                (item.find("pubDate").text or "").split("+")[0].strip()
+                if item.find("pubDate") is not None
+                else ""
+            )
             haberler.append(f"🔹 <a href='{link}'>{title}</a> ({pub})")
 
         return "\n".join(haberler)
@@ -204,8 +225,15 @@ def analyze_news_with_ai(news_text):
 
         r = requests.post(
             "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={"model": "gpt-4o-mini", "messages": [{"role": "user", "content": prompt}], "max_tokens": 120},
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "gpt-4o-mini",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 120,
+            },
             timeout=15,
         )
         if r.status_code != 200:
@@ -243,7 +271,7 @@ def get_price(symbol):
         def sf(x):
             try:
                 return float(x) if x is not None else None
-            except:
+            except Exception:
                 return None
 
         info = t.info  # fast_info dışında kalan alanlarda yedek
@@ -273,14 +301,25 @@ TV_HEADERS = {
     "x-rapidapi-host": "tradingview-real-time.p.rapidapi.com",
 }
 
+
 def get_tv_analysis(symbol):
     try:
-        r = requests.get(TV_URL, headers=TV_HEADERS, params={"query": symbol.upper()}, timeout=8)
+        r = requests.get(
+            TV_URL,
+            headers=TV_HEADERS,
+            params={"query": symbol.upper()},
+            timeout=8,
+        )
         data = r.json().get("data", {})
-        return {"rsi": data.get("RSI"), "ema50": data.get("EMA50"), "ema200": data.get("EMA200")}
+        return {
+            "rsi": data.get("RSI"),
+            "ema50": data.get("EMA50"),
+            "ema200": data.get("EMA200"),
+        }
     except Exception as e:
         print("get_tv_analysis hata:", e, flush=True)
         return None
+
 
 def map_rsi_label(rsi):
     """RSI değerine göre sinyal döndürür."""
@@ -297,14 +336,16 @@ def map_rsi_label(rsi):
             return f"{r} (SAT)"
         else:
             return f"{r} (NÖTR)"
-    except:
+    except Exception:
         return "NÖTR"
+
 
 def map_ema_signal(ema50, ema200):
     try:
         return "AL" if float(ema50) >= float(ema200) else "SAT"
-    except:
+    except Exception:
         return "NÖTR"
+
 
 def combine_recommendation(ema_sig, rsi_label):
     """EMA ve RSI sinyallerine göre Kriptos AI genel yorumu üretir."""
@@ -315,13 +356,13 @@ def combine_recommendation(ema_sig, rsi_label):
     return "NÖTR"
 
 
-# --- BILANÇO ÖZETİ (PASİF - Placeholder Versiyonu) ---
+# --- BİLANÇO ÖZETİ (PASİF - Placeholder Versiyonu) ---
 def get_balance_summary(symbol):
     """Bilanço özeti şu anda pasif."""
     return {"summary": "🤖 <b>Bilanço Özeti</b>\n<b>Kriptos AI:</b> Çok yakında"}
 
 
-##-------------------------MESAJ OLUŞTURMA-------------------------##
+# -------------------------MESAJ OLUŞTURMA------------------------- #
 def build_message(symbol):
     symbol = symbol.strip().upper()
     info = get_price(symbol)
@@ -390,6 +431,7 @@ def build_favorite_line(sym):
 # =============== OTOMATİK FAVORİ GÖNDERİCİ ===============
 _last_sent_marker = {"morning": None, "evening": None}
 
+
 def send_favorite_summaries_loop():
     """Her gün 10:00 ve 17:00 (İstanbul) favori hisseleri gönderir."""
     while True:
@@ -397,15 +439,22 @@ def send_favorite_summaries_loop():
             now = now_istanbul()
             hhmm = now.strftime("%H:%M")
             # duplicate engeli: aynı dakika içinde bir kez
-            if hhmm == "10:00" and _last_sent_marker["morning"] != now.strftime("%Y-%m-%d 10:00"):
+            if (
+                hhmm == "10:00"
+                and _last_sent_marker["morning"] != now.strftime("%Y-%m-%d 10:00")
+            ):
                 _last_sent_marker["morning"] = now.strftime("%Y-%m-%d 10:00")
                 _broadcast_favorites(now_label="Sabah")
-            if hhmm == "17:00" and _last_sent_marker["evening"] != now.strftime("%Y-%m-%d 17:00"):
+            if (
+                hhmm == "17:00"
+                and _last_sent_marker["evening"] != now.strftime("%Y-%m-%d 17:00")
+            ):
                 _last_sent_marker["evening"] = now.strftime("%Y-%m-%d 17:00")
                 _broadcast_favorites(now_label="Akşam")
         except Exception as e:
             print("Favori döngü hatası:", e, flush=True)
         time.sleep(20)  # 20 sn’de bir kontrol
+
 
 def _broadcast_favorites(now_label="Özet"):
     favorites = load_favorites()
@@ -546,7 +595,6 @@ def main():
                     "/portfoy ekle ASELS 100 54.80  —  (100 LOT, maliyet 54.80 TL)\n"
                     "/portfoy goster  —  Portföyünü, anlık değerini ve K/Z gösterir\n"
                     "/portfoy sil ASELS  —  Hisseyi portföyden kaldırır\n\n"
-
                 )
                 send_message(chat_id, msg)
                 continue
@@ -559,7 +607,10 @@ def main():
                 if cmd == "ekle" and len(parts) >= 3:
                     sym = parts[2].upper()
                     if not sym.isalpha():
-                        send_message(chat_id, "⚠️ Lütfen geçerli bir hisse kodu girin. (Örn: ASELS)")
+                        send_message(
+                            chat_id,
+                            "⚠️ Lütfen geçerli bir hisse kodu girin. (Örn: ASELS)",
+                        )
                         continue
                     favs = favorites.get(str(chat_id), [])
                     if sym not in favs:
@@ -568,7 +619,9 @@ def main():
                         save_favorites(favorites)
                         send_message(chat_id, f"✅ <b>{sym}</b> favorilerine eklendi.")
                     else:
-                        send_message(chat_id, f"ℹ️ <b>{sym}</b> zaten favorilerinde mevcut.")
+                        send_message(
+                            chat_id, f"ℹ️ <b>{sym}</b> zaten favorilerinde mevcut."
+                        )
                     continue
 
                 elif cmd == "sil" and len(parts) >= 3:
@@ -578,22 +631,37 @@ def main():
                         favs.remove(sym)
                         favorites[str(chat_id)] = favs
                         save_favorites(favorites)
-                        send_message(chat_id, f"🗑️ <b>{sym}</b> favorilerinden kaldırıldı.")
+                        send_message(
+                            chat_id, f"🗑️ <b>{sym}</b> favorilerinden kaldırıldı."
+                        )
                     else:
-                        send_message(chat_id, f"⚠️ <b>{sym}</b> favorilerinde bulunamadı.")
+                        send_message(
+                            chat_id, f"⚠️ <b>{sym}</b> favorilerinde bulunamadı."
+                        )
                     continue
 
                 elif cmd in ["liste", "goster"]:
                     favs = favorites.get(str(chat_id), [])
                     if not favs:
-                        send_message(chat_id, "⭐ Henüz hiç favorin yok. Örnek: /favori ekle ASELS")
+                        send_message(
+                            chat_id,
+                            "⭐ Henüz hiç favorin yok. Örnek: /favori ekle ASELS",
+                        )
                     else:
                         fav_text = "\n".join([f"• {s}" for s in favs])
-                        send_message(chat_id, f"⭐ <b>Favori Hisselerin:</b>\n{fav_text}")
+                        send_message(
+                            chat_id, f"⭐ <b>Favori Hisselerin:</b>\n{fav_text}"
+                        )
                     continue
 
                 else:
-                    send_message(chat_id, "⚙️ Kullanım:\n/favori ekle ASELS\n/favori sil ASELS\n/favori liste")
+                    send_message(
+                        chat_id,
+                        "⚙️ Kullanım:\n"
+                        "/favori ekle ASELS\n"
+                        "/favori sil ASELS\n"
+                        "/favori liste",
+                    )
                     continue
 
             # ---- /alarm komutları ----
@@ -607,12 +675,17 @@ def main():
                     try:
                         target = float(parts[3].replace(",", "."))
                     except ValueError:
-                        send_message(chat_id, "⚠️ Hedef fiyatı sayısal olarak giriniz. Örn: /alarm ekle ASELS 190")
+                        send_message(
+                            chat_id,
+                            "⚠️ Hedef fiyatı sayısal olarak giriniz. Örn: /alarm ekle ASELS 190",
+                        )
                         continue
 
                     info = get_price(sym)
                     if not info or not info.get("fiyat"):
-                        send_message(chat_id, f"⚠️ {sym} için anlık fiyat alınamadı.")
+                        send_message(
+                            chat_id, f"⚠️ {sym} için anlık fiyat alınamadı."
+                        )
                         continue
 
                     current = float(info["fiyat"])
@@ -629,19 +702,27 @@ def main():
                     uid_key = str(chat_id)
                     user_alarms = alarms.get(uid_key, [])
                     # aynı sembol + target varsa tekrar ekleme
-                    exists = any(a.get("symbol") == sym and float(a.get("target")) == target for a in user_alarms)
+                    exists = any(
+                        a.get("symbol") == sym
+                        and float(a.get("target")) == target
+                        for a in user_alarms
+                    )
                     if exists:
-                        send_message(chat_id, f"ℹ️ <b>{sym}</b> için {target} TL alarmı zaten kayıtlı.")
+                        send_message(
+                            chat_id,
+                            f"ℹ️ <b>{sym}</b> için {target} TL alarmı zaten kayıtlı.",
+                        )
                         continue
 
-                    user_alarms.append({
-                        "symbol": sym,
-                        "target": target,
-                        "direction": direction
-                    })
+                    user_alarms.append(
+                        {"symbol": sym, "target": target, "direction": direction}
+                    )
                     alarms[uid_key] = user_alarms
                     save_alarms(alarms)
-                    send_message(chat_id, f"🔔 <b>{sym}</b> için <b>{target} TL</b> ({dir_text}) alarmı kaydedildi.")
+                    send_message(
+                        chat_id,
+                        f"🔔 <b>{sym}</b> için <b>{target} TL</b> ({dir_text}) alarmı kaydedildi.",
+                    )
                     continue
 
                 # /alarm sil ASELS 190
@@ -650,18 +731,34 @@ def main():
                     try:
                         target = float(parts[3].replace(",", "."))
                     except ValueError:
-                        send_message(chat_id, "⚠️ Hedef fiyatı sayısal olarak giriniz. Örn: /alarm sil ASELS 190")
+                        send_message(
+                            chat_id,
+                            "⚠️ Hedef fiyatı sayısal olarak giriniz. Örn: /alarm sil ASELS 190",
+                        )
                         continue
 
                     uid_key = str(chat_id)
                     user_alarms = alarms.get(uid_key, [])
-                    new_list = [a for a in user_alarms if not (a.get("symbol") == sym and float(a.get("target")) == target)]
+                    new_list = [
+                        a
+                        for a in user_alarms
+                        if not (
+                            a.get("symbol") == sym
+                            and float(a.get("target")) == target
+                        )
+                    ]
                     if len(new_list) == len(user_alarms):
-                        send_message(chat_id, f"⚠️ <b>{sym}</b> için {target} TL alarmı bulunamadı.")
+                        send_message(
+                            chat_id,
+                            f"⚠️ <b>{sym}</b> için {target} TL alarmı bulunamadı.",
+                        )
                     else:
                         alarms[uid_key] = new_list
                         save_alarms(alarms)
-                        send_message(chat_id, f"🗑️ <b>{sym}</b> {target} TL alarmı silindi.")
+                        send_message(
+                            chat_id,
+                            f"🗑️ <b>{sym}</b> {target} TL alarmı silindi.",
+                        )
                     continue
 
                 # /alarm liste
@@ -669,7 +766,10 @@ def main():
                     uid_key = str(chat_id)
                     user_alarms = alarms.get(uid_key, [])
                     if not user_alarms:
-                        send_message(chat_id, "🔔 Aktif alarmın yok. Örnek: /alarm ekle ASELS 190")
+                        send_message(
+                            chat_id,
+                            "🔔 Aktif alarmın yok. Örnek: /alarm ekle ASELS 190",
+                        )
                     else:
                         lines = ["🔔 <b>Aktif Alarmların:</b>"]
                         for a in user_alarms:
@@ -687,7 +787,13 @@ def main():
                     continue
 
                 else:
-                    send_message(chat_id, "🔔 Kullanım:\n/alarm ekle ASELS 190\n/alarm sil ASELS 190\n/alarm liste")
+                    send_message(
+                        chat_id,
+                        "🔔 Kullanım:\n"
+                        "/alarm ekle ASELS 190\n"
+                        "/alarm sil ASELS 190\n"
+                        "/alarm liste",
+                    )
                     continue
 
             # ---- /portfoy komutları ----
@@ -706,11 +812,17 @@ def main():
                         adet = float(parts[3].replace(",", "."))
                         maliyet = float(parts[4].replace(",", "."))
                     except ValueError:
-                        send_message(chat_id, "⚠️ Kullanım: /portfoy ekle ASELS 100 54.8")
+                        send_message(
+                            chat_id,
+                            "⚠️ Kullanım: /portfoy ekle ASELS 100 54.8",
+                        )
                         continue
 
                     if adet <= 0 or maliyet <= 0:
-                        send_message(chat_id, "⚠️ Adet ve maliyet pozitif olmalıdır.")
+                        send_message(
+                            chat_id,
+                            "⚠️ Adet ve maliyet pozitif olmalıdır.",
+                        )
                         continue
 
                     user_p = portfoy.get(uid_key, {})
@@ -721,7 +833,9 @@ def main():
 
                     yeni_adet = eski_adet + adet
                     toplam_tutar = eski_adet * eski_maliyet + adet * maliyet
-                    yeni_maliyet = toplam_tutar / yeni_adet if yeni_adet > 0 else 0
+                    yeni_maliyet = (
+                        toplam_tutar / yeni_adet if yeni_adet > 0 else 0
+                    )
 
                     user_p[sym] = {"adet": yeni_adet, "maliyet": yeni_maliyet}
                     portfoy[uid_key] = user_p
@@ -731,152 +845,207 @@ def main():
                         chat_id,
                         f"📦 <b>{sym}</b> için portföy güncellendi.\n"
                         f"Toplam adet: <b>{yeni_adet:.2f}</b>\n"
-                        f"Ortalama maliyet: <b>{yeni_maliyet:.2f} TL</b>"
+                        f"Ortalama maliyet: <b>{yeni_maliyet:.2f} TL</b>",
                     )
                     continue
 
                 # /portfoy goster  veya  /portfoy liste
                 elif cmd in ["goster", "göster", "liste"]:
-    user_p = portfoy.get(uid_key, {})
-    if not user_p:
-        send_message(chat_id, "📦 Portföyünde kayıtlı hisse yok. Örnek: /portfoy ekle ASELS 100 54.8")
-        continue
+                    user_p = portfoy.get(uid_key, {})
+                    if not user_p:
+                        send_message(
+                            chat_id,
+                            "📦 Portföyünde kayıtlı hisse yok. Örnek: /portfoy ekle ASELS 100 54.8",
+                        )
+                        continue
 
-    lines = ["📦 <b>Portföyün:</b>\n"]
+                    lines = ["📦 <b>Portföyün:</b>\n"]
 
-    genel_maliyet = 0
-    genel_deger = 0
-    hisse_kz_list = []  # grafik için
+                    genel_maliyet = 0
+                    genel_deger = 0
+                    hisse_kz_list = []  # grafik için
 
-    ai_hisse_yorum_metni = ""  # her hisseye özel yorumlar birikecek
+                    ai_hisse_yorum_metni = ""  # her hisseye özel yorumlar birikecek
 
-    for sym, pos in user_p.items():
-        adet = float(pos.get("adet", 0))
-        maliyet = float(pos.get("maliyet", 0))
-        toplam_maliyet = adet * maliyet
+                    for sym, pos in user_p.items():
+                        adet = float(pos.get("adet", 0))
+                        maliyet = float(pos.get("maliyet", 0))
+                        toplam_maliyet = adet * maliyet
 
-        info = get_price(sym)
-        fiyat = info.get("fiyat") if info else None
-        anlik_deger = fiyat * adet if fiyat is not None else None
+                        info = get_price(sym)
+                        fiyat = info.get("fiyat") if info else None
+                        anlik_deger = (
+                            fiyat * adet if fiyat is not None else None
+                        )
 
-        if anlik_deger is not None:
-            kar_zarar = anlik_deger - toplam_maliyet
-            yuzde = (kar_zarar / toplam_maliyet * 100) if toplam_maliyet > 0 else 0
-            kz_emoji = "🟢" if kar_zarar >= 0 else "🔴"
+                        if anlik_deger is not None:
+                            kar_zarar = anlik_deger - toplam_maliyet
+                            yuzde = (
+                                kar_zarar / toplam_maliyet * 100
+                                if toplam_maliyet > 0
+                                else 0
+                            )
+                            kz_emoji = "🟢" if kar_zarar >= 0 else "🔴"
 
-            genel_maliyet += toplam_maliyet
-            genel_deger += anlik_deger
+                            genel_maliyet += toplam_maliyet
+                            genel_deger += anlik_deger
 
-            hisse_kz_list.append((sym, kar_zarar))
+                            hisse_kz_list.append((sym, kar_zarar))
 
-            # --- AI’ya hisse bazlı portföy yorumu ---
-            ai_prompt_hisse = (
-                f"{sym} hissesi için portföyde {adet} lot bulunuyor. "
-                f"Ortalama maliyet {maliyet:.2f} TL, anlık fiyat {fiyat:.2f} TL. "
-                f"Buna göre toplam kar/zarar {kar_zarar:.2f} TL (%{yuzde:.2f}). "
-                "Bu durumu kısa bir yatırım tavsiyesi içermeyen analiz formatında değerlendir."
-            )
+                            # --- AI’ya hisse bazlı portföy yorumu ---
+                            ai_prompt_hisse = (
+                                f"{sym} hissesi için portföyde {adet} lot bulunuyor. "
+                                f"Ortalama maliyet {maliyet:.2f} TL, anlık fiyat {fiyat:.2f} TL. "
+                                f"Buna göre toplam kar/zarar {kar_zarar:.2f} TL (%{yuzde:.2f}). "
+                                "Bu durumu kısa bir yatırım tavsiyesi içermeyen analiz formatında değerlendir."
+                            )
 
-            try:
-                r = requests.post(
-                    "https://api.openai.com/v1/chat/completions",
-                    headers={"Authorization": f"Bearer " + os.getenv("OPENAI_API_KEY")},
-                    json={
-                        "model": "gpt-4o-mini",
-                        "messages": [{"role": "user", "content": ai_prompt_hisse}],
-                        "max_tokens": 80
-                    }
-                )
-                ai_hisse_yorumu = r.json()["choices"][0]["message"]["content"]
-            except:
-                ai_hisse_yorumu = "⚠️ AI yorum yapılamadı."
+                            try:
+                                r = requests.post(
+                                    "https://api.openai.com/v1/chat/completions",
+                                    headers={
+                                        "Authorization": "Bearer "
+                                        + os.getenv("OPENAI_API_KEY")
+                                    },
+                                    json={
+                                        "model": "gpt-4o-mini",
+                                        "messages": [
+                                            {
+                                                "role": "user",
+                                                "content": ai_prompt_hisse,
+                                            }
+                                        ],
+                                        "max_tokens": 80,
+                                    },
+                                )
+                                ai_hisse_yorumu = r.json()["choices"][0][
+                                    "message"
+                                ]["content"]
+                            except Exception:
+                                ai_hisse_yorumu = (
+                                    "⚠️ AI yorum yapılamadı."
+                                )
 
-            ai_hisse_yorum_metni += f"\n🤖 <b>{sym} AI Yorumu:</b> {ai_hisse_yorumu}\n"
+                            ai_hisse_yorum_metni += (
+                                f"\n🤖 <b>{sym} AI Yorumu:</b> "
+                                f"{ai_hisse_yorumu}\n"
+                            )
 
-            lines.append(
-                f"📌 <b>{sym}</b>\n"
-                f"   • Lot: <b>{adet:.0f}</b>\n"
-                f"   • Maliyet: <b>{maliyet:.2f} TL</b>\n"
-                f"   • Anlık: <b>{format_price(fiyat)} TL</b>\n"
-                f"   • Değer: <b>{format_price(anlik_deger)} TL</b>\n"
-                f"   • {kz_emoji} K/Z: <b>{kar_zarar:.2f} TL (%{yuzde:.2f})</b>\n"
-            )
-        else:
-            lines.append(
-                f"📌 <b>{sym}</b>\n"
-                f"   • Lot: <b>{adet:.0f}</b>\n"
-                f"   • Maliyet: <b>{maliyet:.2f} TL</b>\n"
-                f"   • ❌ Anlık fiyat alınamadı\n"
-            )
+                            lines.append(
+                                f"📌 <b>{sym}</b>\n"
+                                f"   • Lot: <b>{adet:.0f}</b>\n"
+                                f"   • Maliyet: <b>{maliyet:.2f} TL</b>\n"
+                                f"   • Anlık: <b>{format_price(fiyat)} TL</b>\n"
+                                f"   • Değer: <b>{format_price(anlik_deger)} TL</b>\n"
+                                f"   • {kz_emoji} K/Z: <b>{kar_zarar:.2f} TL (%{yuzde:.2f})</b>\n"
+                            )
+                        else:
+                            lines.append(
+                                f"📌 <b>{sym}</b>\n"
+                                f"   • Lot: <b>{adet:.0f}</b>\n"
+                                f"   • Maliyet: <b>{maliyet:.2f} TL</b>\n"
+                                f"   • ❌ Anlık fiyat alınamadı\n"
+                            )
 
-    # --- GENEL PORTFÖY ---
-    genel_kz = genel_deger - genel_maliyet
-    genel_yuzde = (genel_kz / genel_maliyet * 100) if genel_maliyet > 0 else 0
-    g_emoji = "🟢" if genel_kz >= 0 else "🔴"
+                    # --- GENEL PORTFÖY ---
+                    genel_kz = genel_deger - genel_maliyet
+                    genel_yuzde = (
+                        genel_kz / genel_maliyet * 100
+                        if genel_maliyet > 0
+                        else 0
+                    )
+                    g_emoji = "🟢" if genel_kz >= 0 else "🔴"
 
-    lines.append("——————————————")
-    lines.append(f"💰 <b>Toplam Maliyet:</b> {format_price(genel_maliyet)} TL")
-    lines.append(f"📊 <b>Portföy Değeri:</b> {format_price(genel_deger)} TL")
-    lines.append(f"{g_emoji} <b>Genel Kar/Zarar:</b> {genel_kz:.2f} TL (%{genel_yuzde:.2f})")
+                    lines.append("——————————————")
+                    lines.append(
+                        f"💰 <b>Toplam Maliyet:</b> {format_price(genel_maliyet)} TL"
+                    )
+                    lines.append(
+                        f"📊 <b>Portföy Değeri:</b> {format_price(genel_deger)} TL"
+                    )
+                    lines.append(
+                        f"{g_emoji} <b>Genel Kar/Zarar:</b> {genel_kz:.2f} TL (%{genel_yuzde:.2f})"
+                    )
 
-    # --- AI Genel Portföy Yorumu ---
-    ai_prompt_genel = (
-        f"Toplam portföy maliyeti {genel_maliyet:.2f} TL, portföyün güncel değeri {genel_deger:.2f} TL. "
-        f"Toplam kar/zarar {genel_kz:.2f} TL (%{genel_yuzde:.2f}). "
-        "Portföyün genel risk seviyesini, dağılımını ve görünümünü kısa bir yatırım tavsiyesi içermeyen analiz formatında değerlendir."
-    )
+                    # --- AI Genel Portföy Yorumu ---
+                    ai_prompt_genel = (
+                        f"Toplam portföy maliyeti {genel_maliyet:.2f} TL, "
+                        f"portföyün güncel değeri {genel_deger:.2f} TL. "
+                        f"Toplam kar/zarar {genel_kz:.2f} TL (%{genel_yuzde:.2f}). "
+                        "Portföyün genel risk seviyesini, dağılımını ve görünümünü kısa bir yatırım "
+                        "tavsiyesi içermeyen analiz formatında değerlendir."
+                    )
 
-    try:
-        r = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer " + os.getenv("OPENAI_API_KEY")},
-            json={
-                "model": "gpt-4o-mini",
-                "messages": [{"role": "user", "content": ai_prompt_genel}],
-                "max_tokens": 100
-            }
-        )
-        genel_ai_yorum = r.json()["choices"][0]["message"]["content"]
-    except:
-        genel_ai_yorum = "⚠️ AI portföy analizi yapılamadı."
+                    try:
+                        r = requests.post(
+                            "https://api.openai.com/v1/chat/completions",
+                            headers={
+                                "Authorization": "Bearer "
+                                + os.getenv("OPENAI_API_KEY")
+                            },
+                            json={
+                                "model": "gpt-4o-mini",
+                                "messages": [
+                                    {
+                                        "role": "user",
+                                        "content": ai_prompt_genel,
+                                    }
+                                ],
+                                "max_tokens": 100,
+                            },
+                        )
+                        genel_ai_yorum = r.json()["choices"][0]["message"][
+                            "content"
+                        ]
+                    except Exception:
+                        genel_ai_yorum = (
+                            "⚠️ AI portföy analizi yapılamadı."
+                        )
 
-    lines.append("\n🤖 <b>Kriptos AI Genel Portföy Yorumu:</b>\n" + genel_ai_yorum)
+                    lines.append(
+                        "\n🤖 <b>Kriptos AI Genel Portföy Yorumu:</b>\n"
+                        + genel_ai_yorum
+                    )
 
-    # --- GRAFİK OLUŞTUR (PNG) ---
-    try:
-        import matplotlib.pyplot as plt
+                    # --- GRAFİK OLUŞTUR (PNG) ---
+                    try:
+                        import matplotlib.pyplot as plt
 
-        names = [x[0] for x in hisse_kz_list]
-        values = [x[1] for x in hisse_kz_list]
+                        names = [x[0] for x in hisse_kz_list]
+                        values = [x[1] for x in hisse_kz_list]
 
-        plt.figure(figsize=(8,5))
-        bars = plt.bar(names, values)
-        plt.title("Hisse Bazlı Kar/Zarar")
-        plt.ylabel("TL")
-        for bar, val in zip(bars, values):
-            plt.text(bar.get_x() + bar.get_width()/2, bar.get_height(),
-                     f"{val:.0f}", ha='center', va='bottom')
+                        plt.figure(figsize=(8, 5))
+                        bars = plt.bar(names, values)
+                        plt.title("Hisse Bazlı Kar/Zarar")
+                        plt.ylabel("TL")
+                        for bar, val in zip(bars, values):
+                            plt.text(
+                                bar.get_x() + bar.get_width() / 2,
+                                bar.get_height(),
+                                f"{val:.0f}",
+                                ha="center",
+                                va="bottom",
+                            )
 
-        graph_path = f"data/portfoy_graph_{uid_key}.png"
-        plt.tight_layout()
-        plt.savefig(graph_path)
-        plt.close()
+                        graph_path = f"data/portfoy_graph_{uid_key}.png"
+                        plt.tight_layout()
+                        plt.savefig(graph_path)
+                        plt.close()
 
-        # Telegram’a gönder
-        with open(graph_path, "rb") as img:
-            requests.post(
-                URL + "sendPhoto",
-                data={"chat_id": chat_id},
-                files={"photo": img}
-            )
+                        # Telegram’a gönder
+                        with open(graph_path, "rb") as img:
+                            requests.post(
+                                URL + "sendPhoto",
+                                data={"chat_id": chat_id},
+                                files={"photo": img},
+                            )
 
-    except Exception as e:
-        print("Grafik hatası:", e)
+                    except Exception as e:
+                        print("Grafik hatası:", e)
 
-    # SON MESAJ
-    send_message(chat_id, "\n".join(lines))
-    continue
-
+                    # SON MESAJ
+                    send_message(chat_id, "\n".join(lines))
+                    continue
 
                 # /portfoy sil ASELS  (tüm pozisyonu sil)
                 elif cmd == "sil" and len(parts) >= 3:
@@ -886,9 +1055,14 @@ def main():
                         del user_p[sym]
                         portfoy[uid_key] = user_p
                         save_portfoy(portfoy)
-                        send_message(chat_id, f"🗑️ <b>{sym}</b> portföyünden silindi.")
+                        send_message(
+                            chat_id, f"🗑️ <b>{sym}</b> portföyünden silindi."
+                        )
                     else:
-                        send_message(chat_id, f"⚠️ Portföyünde <b>{sym}</b> bulunamadı.")
+                        send_message(
+                            chat_id,
+                            f"⚠️ Portföyünde <b>{sym}</b> bulunamadı.",
+                        )
                     continue
 
                 else:
@@ -897,7 +1071,7 @@ def main():
                         "📦 Kullanım:\n"
                         "/portfoy ekle ASELS 100 54.8\n"
                         "/portfoy goster\n"
-                        "/portfoy sil ASELS"
+                        "/portfoy sil ASELS",
                     )
                     continue
 
@@ -913,13 +1087,16 @@ def main():
 # =============== FLASK (Render Portu) ===============
 app = Flask(__name__)
 
-@app.route('/')
+
+@app.route("/")
 def home():
     return "✅ Bot aktif, Render portu açık!", 200
 
+
 def run():
     port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host="0.0.0.0", port=port)
+
 
 Thread(target=run).start()
 
