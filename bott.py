@@ -165,34 +165,29 @@ def analyze_news_with_ai(news_text):
 
 # =============== YAHOO FİYAT ===============
 def get_price(symbol):
-    """Yahoo Finance üzerinden fiyat, açılış, kapanış, tavan, taban bilgilerini çeker."""
+    """Yahoo Finance - küsuratlı fiyat, açılış, kapanış bilgilerini çeker (fast_info kullanır)."""
     try:
-        time.sleep(random.uniform(0.3, 0.6))
-        ticker = yf.Ticker(symbol.upper() + ".IS")
-        info = ticker.info
+        time.sleep(random.uniform(0.2, 0.4))
 
-        price = info.get("currentPrice")
-        if not price:
+        ticker = yf.Ticker(symbol.upper() + ".IS")
+        fi = ticker.fast_info  # hızlı ve doğru fiyat kaynağı
+
+        fiyat = fi.get("last_price")
+        if fiyat is None:
             return None
 
-        # Tüm fiyatlar float olarak dönsün
-        def safe_float(v):
-            try:
-                return float(v) if v is not None else None
-            except:
-                return None
-
         return {
-            "fiyat": safe_float(price),
-            "acilis": safe_float(info.get("open")),
-            "kapanis": safe_float(info.get("previousClose")),
-            "tavan": safe_float(info.get("dayHigh")),
-            "taban": safe_float(info.get("dayLow")),
+            "fiyat": fiyat,                        # küsuratlı fiyat
+            "acilis": fi.get("open"),
+            "kapanis": fi.get("previous_close"),
+            "tavan": fi.get("day_high"),
+            "taban": fi.get("day_low"),
         }
 
     except Exception as e:
         print("get_price hata:", e, flush=True)
         return None
+
 
 
 # =============== TRADINGVIEW (RSI, EMA50/EMA200) ===============
