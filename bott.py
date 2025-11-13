@@ -13,6 +13,8 @@ import html
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use("Agg")
 
 
 # =============== KALICI DİSK (Render Disk) ===============
@@ -55,6 +57,18 @@ def send_message(chat_id, text):
         )
     except Exception as e:
         print("Send error:", e, flush=True)
+
+def send_photo(chat_id, path):
+    try:
+        with open(path, "rb") as img:
+            requests.post(
+                URL + "sendPhoto",
+                files={"photo": img},
+                data={"chat_id": chat_id}
+            )
+    except Exception as e:
+        print("Foto gönderme hatası:", e)
+
 
 
 # =============== FAVORİ SİSTEMİ ===============
