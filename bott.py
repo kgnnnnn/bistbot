@@ -10,7 +10,7 @@ from threading import Thread
 import openai
 import xml.etree.ElementTree as ET
 import html
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 
@@ -20,11 +20,14 @@ print("DEBUG OPENAI KEY:", openai.api_key[:10] if openai.api_key else "YOK", flu
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 URL = f"https://api.telegram.org/bot{BOT_TOKEN}/"
 
+# Istanbul time helper (UTC+3). Fully timezone-aware.
 
-# Istanbul time helper (UTC+3). If your server is UTC, this aligns with TR time.
 IST_UTC_OFFSET_HOURS = 3
+
 def now_istanbul():
-    return datetime.utcnow() + timedelta(hours=IST_UTC_OFFSET_HOURS)
+    tr_tz = timezone(timedelta(hours=IST_UTC_OFFSET_HOURS))
+    return datetime.now(timezone.utc).astimezone(tr_tz)
+
 
 # =============== TELEGRAM ===============
 def get_updates(offset=None):
