@@ -527,10 +527,10 @@ def main():
                     "/alarm sil ASELS 190\n"
                     "/alarm liste\n\n"
                     "📦 Portföy komutları:\n"
-                    "/portfoy ekle ASELS 100 54.8\n"
-                    "/portfoy goster\n"
-                    "/portfoy sil ASELS\n\n"
-                    "⏰ Otomatik özet: Favori hisselerin her gün 10:00 ve 17:00'de iletilir."
+                    "/portfoy ekle ASELS 100 54.80  —  (100 LOT, maliyet 54.80 TL)\n"
+                    "/portfoy goster  —  Portföyünü, anlık değerini ve K/Z gösterir\n"
+                    "/portfoy sil ASELS  —  Hisseyi portföyden kaldırır\n\n"
+
                 )
                 send_message(chat_id, msg)
                 continue
@@ -721,41 +721,146 @@ def main():
 
                 # /portfoy goster  veya  /portfoy liste
                 elif cmd in ["goster", "göster", "liste"]:
-                    user_p = portfoy.get(uid_key, {})
-                    if not user_p:
-                        send_message(chat_id, "📦 Portföyünde kayıtlı hisse yok. Örnek: /portfoy ekle ASELS 100 54.8")
-                        continue
+    user_p = portfoy.get(uid_key, {})
+    if not user_p:
+        send_message(chat_id, "📦 Portföyünde kayıtlı hisse yok. Örnek: /portfoy ekle ASELS 100 54.8")
+        continue
 
-                    lines = ["📦 <b>Portföyün:</b>"]
-                    for sym, pos in user_p.items():
-                        adet = float(pos.get("adet", 0))
-                        maliyet = float(pos.get("maliyet", 0))
-                        toplam_maliyet = adet * maliyet
+    lines = ["📦 <b>Portföyün:</b>\n"]
 
-                        info = get_price(sym)
-                        fiyat = info.get("fiyat") if info else None
-                        anlik_deger = fiyat * adet if fiyat is not None else None
+    genel_maliyet = 0
+    genel_deger = 0
+    hisse_kz_list = []  # grafik için
 
-                        if anlik_deger is not None:
-                            kar_zarar = anlik_deger - toplam_maliyet
-                            try:
-                                yuzde = (anlik_deger / toplam_maliyet - 1) * 100 if toplam_maliyet > 0 else 0
-                            except ZeroDivisionError:
-                                yuzde = 0
-                            kz_emoji = "🟢" if kar_zarar >= 0 else "🔴"
-                            lines.append(
-                                f"• <b>{sym}</b> — {adet:.2f} adet @ {maliyet:.2f} TL\n"
-                                f"  Anlık: {format_price(fiyat)} TL | Değer: {format_price(anlik_deger)} TL\n"
-                                f"  {kz_emoji} K/Z: {kar_zarar:.2f} TL (%{yuzde:.2f})"
-                            )
-                        else:
-                            lines.append(
-                                f"• <b>{sym}</b> — {adet:.2f} adet @ {maliyet:.2f} TL\n"
-                                f"  Anlık fiyat alınamadı."
-                            )
+    ai_hisse_yorum_metni = ""  # her hisseye özel yorumlar birikecek
 
-                    send_message(chat_id, "\n".join(lines))
-                    continue
+    for sym, pos in user_p.items():
+        adet = float(pos.get("adet", 0))
+        maliyet = float(pos.get("maliyet", 0))
+        toplam_maliyet = adet * maliyet
+
+        info = get_price(sym)
+        fiyat = info.get("fiyat") if info else None
+        anlik_deger = fiyat * adet if fiyat is not None else None
+
+        if anlik_deger is not None:
+            kar_zarar = anlik_deger - toplam_maliyet
+            yuzde = (kar_zarar / toplam_maliyet * 100) if toplam_maliyet > 0 else 0
+            kz_emoji = "🟢" if kar_zarar >= 0 else "🔴"
+
+            genel_maliyet += toplam_maliyet
+            genel_deger += anlik_deger
+
+            hisse_kz_list.append((sym, kar_zarar))
+
+            # --- AI’ya hisse bazlı portföy yorumu ---
+            ai_prompt_hisse = (
+                f"{sym} hissesi için portföyde {adet} lot bulunuyor. "
+                f"Ortalama maliyet {maliyet:.2f} TL, anlık fiyat {fiyat:.2f} TL. "
+                f"Buna göre toplam kar/zarar {kar_zarar:.2f} TL (%{yuzde:.2f}). "
+                "Bu durumu kısa bir yatırım tavsiyesi içermeyen analiz formatında değerlendir."
+            )
+
+            try:
+                r = requests.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={"Authorization": f"Bearer " + os.getenv("OPENAI_API_KEY")},
+                    json={
+                        "model": "gpt-4o-mini",
+                        "messages": [{"role": "user", "content": ai_prompt_hisse}],
+                        "max_tokens": 80
+                    }
+                )
+                ai_hisse_yorumu = r.json()["choices"][0]["message"]["content"]
+            except:
+                ai_hisse_yorumu = "⚠️ AI yorum yapılamadı."
+
+            ai_hisse_yorum_metni += f"\n🤖 <b>{sym} AI Yorumu:</b> {ai_hisse_yorumu}\n"
+
+            lines.append(
+                f"📌 <b>{sym}</b>\n"
+                f"   • Lot: <b>{adet:.0f}</b>\n"
+                f"   • Maliyet: <b>{maliyet:.2f} TL</b>\n"
+                f"   • Anlık: <b>{format_price(fiyat)} TL</b>\n"
+                f"   • Değer: <b>{format_price(anlik_deger)} TL</b>\n"
+                f"   • {kz_emoji} K/Z: <b>{kar_zarar:.2f} TL (%{yuzde:.2f})</b>\n"
+            )
+        else:
+            lines.append(
+                f"📌 <b>{sym}</b>\n"
+                f"   • Lot: <b>{adet:.0f}</b>\n"
+                f"   • Maliyet: <b>{maliyet:.2f} TL</b>\n"
+                f"   • ❌ Anlık fiyat alınamadı\n"
+            )
+
+    # --- GENEL PORTFÖY ---
+    genel_kz = genel_deger - genel_maliyet
+    genel_yuzde = (genel_kz / genel_maliyet * 100) if genel_maliyet > 0 else 0
+    g_emoji = "🟢" if genel_kz >= 0 else "🔴"
+
+    lines.append("——————————————")
+    lines.append(f"💰 <b>Toplam Maliyet:</b> {format_price(genel_maliyet)} TL")
+    lines.append(f"📊 <b>Portföy Değeri:</b> {format_price(genel_deger)} TL")
+    lines.append(f"{g_emoji} <b>Genel Kar/Zarar:</b> {genel_kz:.2f} TL (%{genel_yuzde:.2f})")
+
+    # --- AI Genel Portföy Yorumu ---
+    ai_prompt_genel = (
+        f"Toplam portföy maliyeti {genel_maliyet:.2f} TL, portföyün güncel değeri {genel_deger:.2f} TL. "
+        f"Toplam kar/zarar {genel_kz:.2f} TL (%{genel_yuzde:.2f}). "
+        "Portföyün genel risk seviyesini, dağılımını ve görünümünü kısa bir yatırım tavsiyesi içermeyen analiz formatında değerlendir."
+    )
+
+    try:
+        r = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer " + os.getenv("OPENAI_API_KEY")},
+            json={
+                "model": "gpt-4o-mini",
+                "messages": [{"role": "user", "content": ai_prompt_genel}],
+                "max_tokens": 100
+            }
+        )
+        genel_ai_yorum = r.json()["choices"][0]["message"]["content"]
+    except:
+        genel_ai_yorum = "⚠️ AI portföy analizi yapılamadı."
+
+    lines.append("\n🤖 <b>Kriptos AI Genel Portföy Yorumu:</b>\n" + genel_ai_yorum)
+
+    # --- GRAFİK OLUŞTUR (PNG) ---
+    try:
+        import matplotlib.pyplot as plt
+
+        names = [x[0] for x in hisse_kz_list]
+        values = [x[1] for x in hisse_kz_list]
+
+        plt.figure(figsize=(8,5))
+        bars = plt.bar(names, values)
+        plt.title("Hisse Bazlı Kar/Zarar")
+        plt.ylabel("TL")
+        for bar, val in zip(bars, values):
+            plt.text(bar.get_x() + bar.get_width()/2, bar.get_height(),
+                     f"{val:.0f}", ha='center', va='bottom')
+
+        graph_path = f"data/portfoy_graph_{uid_key}.png"
+        plt.tight_layout()
+        plt.savefig(graph_path)
+        plt.close()
+
+        # Telegram’a gönder
+        with open(graph_path, "rb") as img:
+            requests.post(
+                URL + "sendPhoto",
+                data={"chat_id": chat_id},
+                files={"photo": img}
+            )
+
+    except Exception as e:
+        print("Grafik hatası:", e)
+
+    # SON MESAJ
+    send_message(chat_id, "\n".join(lines))
+    continue
+
 
                 # /portfoy sil ASELS  (tüm pozisyonu sil)
                 elif cmd == "sil" and len(parts) >= 3:
