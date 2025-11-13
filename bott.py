@@ -548,7 +548,8 @@ def main():
     # alarm kontrol thread'i
     Thread(target=alarm_check_loop, daemon=True).start()
 
-    last_update_id = None    processed = set()
+    last_update_id = None    
+    processed = set()
     favorites = load_favorites()
     alarms = load_alarms()
     portföy = load_portfoy()
