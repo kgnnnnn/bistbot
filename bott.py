@@ -17,8 +17,9 @@ from urllib.parse import quote
 openai.api_key = os.getenv("OPENAI_API_KEY")
 print("DEBUG OPENAI KEY:", openai.api_key[:10] if openai.api_key else "YOK", flush=True)
 
-BOT_TOKEN = "8116276773:AAHoSQAthKmijTE62bkqtGQNACf0zi0JuCs"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 URL = f"https://api.telegram.org/bot{BOT_TOKEN}/"
+
 
 # Istanbul time helper (UTC+3). If your server is UTC, this aligns with TR time.
 IST_UTC_OFFSET_HOURS = 3
