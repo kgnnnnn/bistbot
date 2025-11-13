@@ -19,12 +19,13 @@ matplotlib.use("Agg")
 
 
 # =============== KALICI DİSK (Render Disk) ===============
-DATA_DIR = "data"
+DATA_DIR = "/opt/render/project/src/data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
 FAVORI_FILE = os.path.join(DATA_DIR, "favoriler.json")
 ALARM_FILE = os.path.join(DATA_DIR, "alarmlar.json")
 PORTFOY_FILE = os.path.join(DATA_DIR, "portfoy.json")
+
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 print("DEBUG OPENAI KEY:", openai.api_key[:10] if openai.api_key else "YOK", flush=True)
