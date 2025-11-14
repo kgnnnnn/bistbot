@@ -594,7 +594,7 @@ BIST100 günlük değişim: %{bist_change:.2f}
 
 Format:
 📌 Genel görünüm (BIST)
-📊 Son değerlendirme (Kriptos AI)
+📊 Son değerlendirme <b>(Kriptos AI)</b>
     """
 
     try:
@@ -624,18 +624,18 @@ def build_daily_summary():
         "📊 <b>Günlük 09:00 Borsa Özeti</b>\n"
         "────────────────────────────\n\n"
         f"📈 <b>BIST100:</b> {bist_price:.2f} (%{bist_change:.2f})\n\n"
-        "🔺 <b>En Çok Artan 5</b>\n"
+        "🟢 <b>En Çok Artan 5</b>\n"
     )
 
     for s, p, c in gainers:
         msg += f"• {s.replace('.IS','')}: {p:.2f} (%{c:.2f})\n"
 
-    msg += "\n🔻 <b>En Çok Düşen 5</b>\n"
+    msg += "\n🔴 <b>En Çok Düşen 5</b>\n"
     for s, p, c in losers:
         msg += f"• {s.replace('.IS','')}: {p:.2f} (%{c:.2f})\n"
 
     msg += (
-        "\n🤖 <b>Kriptos AI Yorumu</b>\n"
+        "\n🤖 <b>Kriptos AI Yorumu</b>\n\n"
         f"{ai_text}"
     )
 
