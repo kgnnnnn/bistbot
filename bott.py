@@ -25,6 +25,23 @@ os.makedirs(DATA_DIR, exist_ok=True)
 FAVORI_FILE = os.path.join(DATA_DIR, "favoriler.json")
 ALARM_FILE = os.path.join(DATA_DIR, "alarmlar.json")
 PORTFOY_FILE = os.path.join(DATA_DIR, "portfoy.json")
+USERS_FILE = os.path.join(DATA_DIR, "users.json")
+
+def load_users():
+    if not os.path.exists(USERS_FILE):
+        return []
+    try:
+        with open(USERS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return []
+
+def save_users(users):
+    try:
+        with open(USERS_FILE, "w", encoding="utf-8") as f:
+            json.dump(users, f, indent=2, ensure_ascii=False)
+    except:
+        pass
 
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -336,6 +353,26 @@ def get_price(symbol):
             "borsa_acik": None,
         }
 
+
+# =============== BIST100 TUM LISTE (BURAYA EKLENECEK) ===============
+BIST100_TICKERS = [
+    "ACSEL.IS","AEFES.IS","AGHOL.IS","AHGAZ.IS","AKBNK.IS","AKCNS.IS","AKFGY.IS",
+    "AKSA.IS","AKSEN.IS","ALARK.IS","ALBRK.IS","ALCAR.IS","ALKA.IS","ARCLK.IS",
+    "ASELS.IS","ASTOR.IS","ASUZU.IS","BAGFS.IS","BASGZ.IS","BERA.IS","BIMAS.IS",
+    "BIOEN.IS","BRSAN.IS","BRYAT.IS","CCOLA.IS","CEMTS.IS","COSMO.IS","DEVA.IS",
+    "DOAS.IS","DOHOL.IS","ECILC.IS","ECZYT.IS","EGEEN.IS","EGGUB.IS","EKSUN.IS",
+    "ENJSA.IS","ENKAI.IS","ERCB.IS","EREGL.IS","EUPWR.IS","FENER.IS","FROTO.IS",
+    "GARAN.IS","GENTS.IS","GUBRF.IS","GWIND.IS","HALKB.IS","HEKTS.IS","HKTM.IS",
+    "ICBCT.IS","IEYHO.IS","ISCTR.IS","ISDMR.IS","ISFIN.IS","ISGYO.IS","ISMEN.IS",
+    "KCHOL.IS","KERVT.IS","KGYO.IS","KMPUR.IS","KONTR.IS","KONYA.IS","KORDS.IS",
+    "KOZAA.IS","KOZAL.IS","KRDMD.IS","KZBGY.IS","MAVI.IS","MGROS.IS","ODAS.IS",
+    "OTKAR.IS","OYAKC.IS","PARSN.IS","PGSUS.IS","PSGYO.IS","PETKM.IS","QNBFB.IS",
+    "QUAGR.IS","SAHOL.IS","SASA.IS","SELEC.IS","SISE.IS","SKBNK.IS","SMART.IS",
+    "SMRTG.IS","SOKM.IS","TAVHL.IS","TCELL.IS","THYAO.IS","TKFEN.IS","TOASO.IS",
+    "TSKB.IS","TTKOM.IS","TTRAK.IS","TUPRS.IS","TURSG.IS","ULKER.IS","VAKBN.IS",
+    "VESTL.IS","YKBNK.IS","ZOREN.IS"
+]
+
 # =============== TRADINGVIEW (RSI, EMA50/EMA200) ===============
 TV_URL = "https://tradingview-real-time.p.rapidapi.com/technicals/summary"
 TV_HEADERS = {
@@ -517,6 +554,144 @@ def _broadcast_favorites(now_label="Özet"):
                 send_message(uid, f"⚠️ {sym} gönderilirken hata oluştu: {e}")
 
 
+# =============== 09:00 GÜNLÜK BIST100 + DÖVİZ + EMTİA + GAINERS/LOSERS + AI ÖZET ===============
+
+def get_bist100_summary():
+    data = yf.Ticker("XU100.IS").history(period="1d")
+    close = data["Close"].iloc[-1]
+    open_ = data["Open"].iloc[-1]
+    change = (close - open_) / open_ * 100
+    return close, change
+
+
+def get_fx_commodities_summary():
+    usd = yf.Ticker("USDTRY=X").history(period="1d")["Close"].iloc[-1]
+    eur = yf.Ticker("EURTRY=X").history(period="1d")["Close"].iloc[-1]
+    gold = yf.Ticker("XAUTRY=X").history(period="1d")["Close"].iloc[-1]
+    silver = yf.Ticker("XAGUSD=X").history(period="1d")["Close"].iloc[-1]
+    brent = yf.Ticker("BZ=F").history(period="1d")["Close"].iloc[-1]
+    return usd, eur, gold, silver, brent
+
+
+def get_top_movers(limit=5):
+    results = []
+    for sym in BIST100_TICKERS:
+        try:
+            h = yf.Ticker(sym).history(period="2d")
+            if len(h) < 2:
+                continue
+            prev = h["Close"].iloc[-2]
+            last = h["Close"].iloc[-1]
+            change = (last - prev) / prev * 100
+            results.append((sym, last, change))
+        except:
+            continue
+
+    sorted_list = sorted(results, key=lambda x: x[2], reverse=True)
+    top_gainers = sorted_list[:limit]
+    top_losers = sorted_list[-limit:][::-1]
+    return top_gainers, top_losers
+
+
+def generate_daily_ai_comment(bist_change, usd, eur, gold, silver, brent):
+    prompt = f"""
+Aşağıdaki verilerle Profesyonel Türkçe bir piyasa özeti oluştur.
+Yatırım tavsiyesi verme.
+
+BIST100 günlük değişim: %{bist_change:.2f}
+USD/TRY: {usd:.2f}
+EUR/TRY: {eur:.2f}
+Altın: {gold:.2f}
+Gümüş: {silver:.2f}
+Brent petrol: {brent:.2f}
+
+Format:
+📌 Genel görünüm (BIST)
+💱 Döviz yorumu
+🪙 Altın / Gümüş
+🛢 Petrol yorumu
+📊 Son değerlendirme (Kriptos AI)
+"""
+
+    try:
+        r = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": "Bearer " + os.getenv("OPENAI_API_KEY")},
+            json={
+                "model": "gpt-4o-mini",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 300,
+            }
+        )
+        return r.json()["choices"][0]["message"]["content"]
+    except:
+        return "⚠️ AI yorumu alınamadı."
+
+
+def build_daily_summary():
+    bist_price, bist_change = get_bist100_summary()
+    usd, eur, gold, silver, brent = get_fx_commodities_summary()
+    gainers, losers = get_top_movers()
+
+    ai_text = generate_daily_ai_comment(bist_change, usd, eur, gold, silver, brent)
+
+    msg = (
+        "📊 <b>Günlük 09:00 Borsa Özeti</b>\n"
+        "────────────────────────────\n\n"
+        f"📈 <b>BIST100:</b> {bist_price:.2f} (%{bist_change:.2f})\n\n"
+        "🔺 <b>En Çok Artan 5</b>\n"
+    )
+    for s, p, c in gainers:
+        msg += f"• {s.replace('.IS','')}: {p:.2f} (%{c:.2f})\n"
+
+    msg += "\n🔻 <b>En Çok Düşen 5</b>\n"
+    for s, p, c in losers:
+        msg += f"• {s.replace('.IS','')}: {p:.2f} (%{c:.2f})\n"
+
+    msg += (
+        "\n💱 <b>Döviz & Emtia</b>\n"
+        f"• USD/TRY: {usd:.2f}\n"
+        f"• EUR/TRY: {eur:.2f}\n"
+        f"• Altın: {gold:.2f}\n"
+        f"• Gümüş: {silver:.2f}\n"
+        f"• Brent: {brent:.2f}\n\n"
+        f"🤖 <b>Kriptos AI Yorumu</b>\n{ai_text}"
+    )
+    return msg
+
+
+_last_daily_send = None
+def daily_report_loop():
+    global _last_daily_send
+    while True:
+        try:
+            now = now_istanbul()
+            if now.strftime("%H:%M") == "09:00":
+                if _last_daily_send != now.strftime("%Y-%m-%d"):
+                    _last_daily_send = now.strftime("%Y-%m-%d")
+                    report = build_daily_summary()
+
+                    # Raporu göndereceğimiz kullanıcılar:
+                    targets = set()
+
+                    favs = load_favorites()
+                    for uid in favs.keys():
+                        targets.add(uid)
+
+                    alarms = load_alarms()
+                    for uid in alarms.keys():
+                        targets.add(uid)
+
+                    for uid in targets:
+                        send_message(uid, report)
+                        time.sleep(0.5)
+
+        except Exception as e:
+            print("Daily error:", e)
+
+        time.sleep(20)
+
+
 # =============== ALARM KONTROL DÖNGÜSÜ ===============
 def alarm_check_loop():
     """Her 60 sn'de bir aktif alarmları kontrol eder."""
@@ -588,6 +763,8 @@ def main():
 
     Thread(target=send_favorite_summaries_loop, daemon=True).start()
     Thread(target=alarm_check_loop, daemon=True).start()
+    Thread(target=daily_report_loop, daemon=True).start()
+
 
     last_update_id = None    
     processed = set()
@@ -624,6 +801,11 @@ def main():
 
             if not chat_id or not text:
                 continue
+            # =============== KULLANICI KAYDI (HERKES 09:00 RAPORU ALSIN) ===============
+            users = load_users()
+            if str(chat_id) not in users:
+                users.append(str(chat_id))
+                save_users(users)
 
             # ========================= /start =========================
             if text.lower() == "/start":
@@ -981,7 +1163,7 @@ def main():
                     send_message(chat_id,
                         "📦 Kullanım:\n"
                         "<code>/portföy</code> ekle ASELS 100(LOT Adedi) 54.8(Maliyet). Şeklinde giriniz.\n"
-                        "<code>/portföy</code> sil ASELS"
+                        "<code>/portföy</code> sil ASELS\n"
                         "<code>/portföy</code> göster\n"
                         
                     )
@@ -1006,10 +1188,30 @@ def main():
 # =============== FLASK (Render Portu) ===============
 app = Flask(__name__)
 
-
 @app.route("/")
 def home():
     return "✅ Bot aktif, Render portu açık!", 200
+
+
+# ======== TEST ROUTE (09:00 özetini anında gönder) ========
+@app.route("/test")
+def test_report():
+    try:
+        report = build_daily_summary()
+
+        users = load_users()  # tüm kayıtlı kullanıcılar
+        if not users:
+            return "Kayıtlı kullanıcı yok!", 200
+
+        for uid in users:
+            send_message(uid, "⏱️ Test modu: 09:00 özeti gönderiliyor...")
+            send_message(uid, report)
+            time.sleep(0.5)
+
+        return "TEST 09:00 ÖZETİ TÜM KULLANICILARA GÖNDERİLDİ ✔️", 200
+
+    except Exception as e:
+        return f"HATA: {e}", 500
 
 
 def run():
