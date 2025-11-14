@@ -790,7 +790,7 @@ def main():
                 msg = (
                     "👋 <b>Kriptos BIST100 Takip Botu'na Hoş Geldin!</b>\n\n"
                     "💬 Sadece hisse kodunu yaz: <b>ASELS/asels</b>, <b>THYAO/thyao</b>...\n"
-                    "🤖 Bot fiyat + haber + teknik analiz + <b>Kriptos AI</b> yorumunu getirir.\n\n"
+                    "🤖 <b>Kriptos AI</b> destekli botumuz sorulan hissenin teknik-temel ve haber analizini yapar.\n\n"
                     
                     "⭐ Favori komutları:\n"
                     "<code>/favori</code> ekle ASELS\n"
@@ -806,7 +806,9 @@ def main():
                     "📦 Portföy komutları:\n"
                     "<code>/portföy</code> ekle ASELS 100 (LOT) 54.80 (Maliyet). Şeklinde giriniz.\n"
                     "<code>/portföy</code> göster\n"
-                    "<code>/portföy</code> sil ASELS\n"
+                    "<code>/portföy</code> sil ASELS\n\n"
+
+                    "❗❗ Unutmayın Yapay zeka ve Botlar yanılabilir. Bu bot Yatırım Tavsiyesi Vermez! Tüm sorumluluk kullanıcıya aittir!"                    
                 )
                 send_message(chat_id, msg)
                 continue
