@@ -564,15 +564,6 @@ def get_bist100_summary():
     return close, change
 
 
-def get_fx_commodities_summary():
-    usd = yf.Ticker("USDTRY=X").history(period="1d")["Close"].iloc[-1]
-    eur = yf.Ticker("EURTRY=X").history(period="1d")["Close"].iloc[-1]
-    gold = yf.Ticker("XAUTRY=X").history(period="1d")["Close"].iloc[-1]
-    silver = yf.Ticker("XAGUSD=X").history(period="1d")["Close"].iloc[-1]
-    brent = yf.Ticker("BZ=F").history(period="1d")["Close"].iloc[-1]
-    return usd, eur, gold, silver, brent
-
-
 def get_top_movers(limit=5):
     results = []
     for sym in BIST100_TICKERS:
@@ -593,25 +584,18 @@ def get_top_movers(limit=5):
     return top_gainers, top_losers
 
 
-def generate_daily_ai_comment(bist_change, usd, eur, gold, silver, brent):
+def generate_daily_ai_comment(bist_change):
+
     prompt = f"""
-Aşağıdaki verilerle Profesyonel Türkçe bir piyasa özeti oluştur.
+Aşağıdaki veriyle profesyonel bir Türkçe piyasa özeti oluştur.
 Yatırım tavsiyesi verme.
 
 BIST100 günlük değişim: %{bist_change:.2f}
-USD/TRY: {usd:.2f}
-EUR/TRY: {eur:.2f}
-Altın: {gold:.2f}
-Gümüş: {silver:.2f}
-Brent petrol: {brent:.2f}
 
 Format:
 📌 Genel görünüm (BIST)
-💱 Döviz yorumu
-🪙 Altın / Gümüş
-🛢 Petrol yorumu
 📊 Son değerlendirme (Kriptos AI)
-"""
+    """
 
     try:
         r = requests.post(
@@ -620,20 +604,21 @@ Format:
             json={
                 "model": "gpt-4o-mini",
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 300,
+                "max_tokens": 200,
             }
         )
         return r.json()["choices"][0]["message"]["content"]
-    except:
+
+    except Exception as e:
+        print("AI yorum hatası:", e)
         return "⚠️ AI yorumu alınamadı."
 
 
 def build_daily_summary():
     bist_price, bist_change = get_bist100_summary()
-    usd, eur, gold, silver, brent = get_fx_commodities_summary()
     gainers, losers = get_top_movers()
 
-    ai_text = generate_daily_ai_comment(bist_change, usd, eur, gold, silver, brent)
+    ai_text = generate_daily_ai_comment(bist_change)
 
     msg = (
         "📊 <b>Günlük 09:00 Borsa Özeti</b>\n"
@@ -641,6 +626,7 @@ def build_daily_summary():
         f"📈 <b>BIST100:</b> {bist_price:.2f} (%{bist_change:.2f})\n\n"
         "🔺 <b>En Çok Artan 5</b>\n"
     )
+
     for s, p, c in gainers:
         msg += f"• {s.replace('.IS','')}: {p:.2f} (%{c:.2f})\n"
 
@@ -649,14 +635,10 @@ def build_daily_summary():
         msg += f"• {s.replace('.IS','')}: {p:.2f} (%{c:.2f})\n"
 
     msg += (
-        "\n💱 <b>Döviz & Emtia</b>\n"
-        f"• USD/TRY: {usd:.2f}\n"
-        f"• EUR/TRY: {eur:.2f}\n"
-        f"• Altın: {gold:.2f}\n"
-        f"• Gümüş: {silver:.2f}\n"
-        f"• Brent: {brent:.2f}\n\n"
-        f"🤖 <b>Kriptos AI Yorumu</b>\n{ai_text}"
+        "\n🤖 <b>Kriptos AI Yorumu</b>\n"
+        f"{ai_text}"
     )
+
     return msg
 
 
@@ -671,15 +653,11 @@ def daily_report_loop():
                     _last_daily_send = now.strftime("%Y-%m-%d")
                     report = build_daily_summary()
 
-                    # Raporu göndereceğimiz kullanıcılar:
+                    # Raporu göndereceğimiz kullanıcılar (HERKES)
                     targets = set()
 
-                    favs = load_favorites()
-                    for uid in favs.keys():
-                        targets.add(uid)
-
-                    alarms = load_alarms()
-                    for uid in alarms.keys():
+                    users = load_users()
+                    for uid in users:
                         targets.add(uid)
 
                     for uid in targets:
