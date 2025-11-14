@@ -404,7 +404,7 @@ def get_balance_summary(symbol):
     return {"summary": "🤖 <b>Bilanço Özeti</b>\n<b>Kriptos AI:</b> Çok yakında"}
 
 
-# ------------------------MESAJ OLUŞTURMA------------------------- #
+# -------------------------MESAJ OLUŞTURMA------------------------- #
 def build_message(symbol):
     symbol = symbol.strip().upper()
     info = get_price(symbol)
@@ -468,132 +468,6 @@ def build_favorite_line(sym):
         f"• <b>{sym}</b> — {fiyat_txt} TL | "
         f"RSI: {rsi_label} | EMA(50/200): {ema_sig}"
     )
-
-
-# ================= 📌 BURAYA GÜNLÜK ÖZET FONKSİYONLARI EKLENİYOR ===================== #
-
-def get_bist100_summary():
-    try:
-        t = yf.Ticker("^XU100")
-        info = t.info or {}
-        price = info.get("regularMarketPrice")
-        prev = info.get("regularMarketPreviousClose")
-        if price and prev:
-            change = ((price - prev) / prev) * 100
-        else:
-            change = 0
-        return {"price": round(price, 2) if price else None, "change": round(change, 2)}
-    except:
-        return {"price": None, "change": 0}
-
-
-def get_top_gainers_losers():
-    try:
-        url = "https://api.borsadata.com/api/v1/hisse/enCokYukselenler"
-        g = requests.get(url, timeout=10).json().get("data", [])[:5]
-
-        url = "https://api.borsadata.com/api/v1/hisse/enCokDusenler"
-        d = requests.get(url, timeout=10).json().get("data", [])[:5]
-
-        gainers = [(x["kod"], x["yuzdeDegisim"]) for x in g]
-        losers = [(x["kod"], x["yuzdeDegisim"]) for x in d]
-        return gainers, losers
-    except:
-        return [], []
-
-
-def get_fx_and_metals():
-    try:
-        usd = yf.Ticker("USDTRY=X").fast_info.get("last_price")
-        eur = yf.Ticker("EURTRY=X").fast_info.get("last_price")
-        gold = yf.Ticker("XAUUSD=X").fast_info.get("last_price")
-        silver = yf.Ticker("XAGUSD=X").fast_info.get("last_price")
-
-        return {
-            "usd": round(usd, 2) if usd else None,
-            "eur": round(eur, 2) if eur else None,
-            "gold": round(gold, 2) if gold else None,
-            "silver": round(silver, 2) if silver else None,
-        }
-    except:
-        return {"usd": None, "eur": None, "gold": None, "silver": None}
-
-
-def build_daily_summary():
-    bist = get_bist100_summary()
-    gainers, losers = get_top_gainers_losers()
-    fx = get_fx_and_metals()
-
-    lines = ["📊 <b>Günlük Borsa Özeti — Kriptos AI</b>\n"]
-
-    if bist["price"]:
-        emoji = "🟢" if bist["change"] >= 0 else "🔴"
-        lines.append(f"🏦 BIST100: {bist['price']} ({emoji} %{bist['change']})")
-
-    lines.append("\n🚀 <b>En Çok Yükselen 5 Hisse</b>")
-    for k, y in gainers:
-        lines.append(f"• {k}: %{y}")
-
-    lines.append("\n📉 <b>En Çok Düşen 5 Hisse</b>")
-    for k, y in losers:
-        lines.append(f"• {k}: %{y}")
-
-    lines.append("\n💱 <b>Döviz & Emtia</b>")
-    lines.append(f"USD/TRY: {fx['usd']} | EUR/TRY: {fx['eur']}")
-    lines.append(f"Altın: {fx['gold']} | Gümüş: {fx['silver']}")
-
-    ai_prompt = (
-        "Aşağıdaki borsa verilerine göre kısa, profesyonel ve yatırım tavsiyesi içermeyen "
-        "bir piyasa değerlendirmesi yaz:\n\n" + "\n".join(lines)
-    )
-
-    try:
-        r = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": "Bearer " + os.getenv("OPENAI_API_KEY")},
-            json={
-                "model": "gpt-4o-mini",
-                "messages": [{"role": "user", "content": ai_prompt}],
-                "max_tokens": 300,
-            }
-        )
-        ai_comment = r.json()["choices"][0]["message"]["content"]
-    except:
-        ai_comment = "⚠️ AI yorumu alınamadı."
-
-    lines.append("\n🤖 <b>Kriptos AI Yorumu</b>")
-    lines.append(ai_comment)
-
-    return "\n".join(lines)
-
-
-# ================== 📌 GÜNLÜK ÖZET BURADA BİTMİŞTİR =====================
-
-# =============== GÜNLÜK ÖZET GÖNDERİCİ DÖNGÜ ===============
-def send_daily_summary_loop():
-    """Her sabah 09:00’da günlük özet gönderir."""
-    sent_today = None
-
-    while True:
-        try:
-            now = now_istanbul()
-            hhmm = now.strftime("%H:%M")
-
-            if hhmm == "09:00":
-                if sent_today != now.strftime("%Y-%m-%d"):
-                    sent_today = now.strftime("%Y-%m-%d")
-
-                    summary = build_daily_summary()
-                    favs = load_favorites()
-
-                    for uid in favs.keys():
-                        send_message(uid, summary)
-
-            time.sleep(20)
-
-        except Exception as e:
-            print("daily summary error:", e)
-            time.sleep(20)
 
 
 # =============== OTOMATİK FAVORİ GÖNDERİCİ ===============
@@ -714,7 +588,6 @@ def main():
 
     Thread(target=send_favorite_summaries_loop, daemon=True).start()
     Thread(target=alarm_check_loop, daemon=True).start()
-    Thread(target=send_daily_summary_loop, daemon=True).start()
 
     last_update_id = None    
     processed = set()
@@ -1145,24 +1018,6 @@ def run():
 
 
 Thread(target=run).start()
-
-# ========================= MANUEL GÜNLÜK ÖZET =========================
-# Bunu EN ALTA KOYUYORUZ, Flask'tan hemen sonra.
-# main() içerisinden komut tetikleme zaten var, bu sadece fonksiyonu aktif ediyor.
-
-@app.route("/send_daily_now")
-def send_daily_now():
-    """Manuel günlük özet tetikleme endpoint'i"""
-    try:
-        summary = build_daily_summary()
-        favs = load_favorites()
-        for uid in favs.keys():
-            send_message(uid, "📨 Manuel tetikleme: Günlük özet gönderiliyor...")
-            send_message(uid, summary)
-        return "Gönderildi", 200
-    except Exception as e:
-        return str(e), 500
-
 
 if __name__ == "__main__":
     main()
