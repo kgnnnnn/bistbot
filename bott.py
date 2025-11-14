@@ -1171,25 +1171,12 @@ def home():
     return "✅ Bot aktif, Render portu açık!", 200
 
 
-# ======== TEST ROUTE (09:00 özetini anında gönder) ========
-@app.route("/test")
-def test_report():
-    try:
-        report = build_daily_summary()
+# =============== FLASK (Render Portu) ===============
+app = Flask(__name__)
 
-        users = load_users()  # tüm kayıtlı kullanıcılar
-        if not users:
-            return "Kayıtlı kullanıcı yok!", 200
-
-        for uid in users:
-            send_message(uid, "⏱️ Test modu: 09:00 özeti gönderiliyor...")
-            send_message(uid, report)
-            time.sleep(0.5)
-
-        return "TEST 09:00 ÖZETİ TÜM KULLANICILARA GÖNDERİLDİ ✔️", 200
-
-    except Exception as e:
-        return f"HATA: {e}", 500
+@app.route("/")
+def home():
+    return "✅ Bot aktif, Render portu açık!", 200
 
 
 def run():
