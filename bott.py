@@ -1166,6 +1166,8 @@ def main():
 
 
 # =============== FLASK (Render Portu) ===============
+from flask import Flask, request
+
 app = Flask(__name__)
 
 @app.route("/")
@@ -1173,12 +1175,30 @@ def home():
     return "✅ Bot aktif, Render portu açık!", 200
 
 
-# =============== FLASK (Render Portu) ===============
-app = Flask(__name__)
+# ======== BROADCAST ROUTE (Tüm kullanıcılara mesaj) ========
+@app.route("/broadcast")
+def broadcast_route():
+    key = request.args.get("key")
+    
+    # Güvenlik: ADMIN_KEY ile doğrulama
+    if key != os.getenv("ADMIN_KEY"):
+        return "❌ Yetkisiz erişim", 403
 
-@app.route("/")
-def home():
-    return "✅ Bot aktif, Render portu açık!", 200
+    msg = request.args.get("msg", "🚀 Kriptos AI güncellendi! Yeni özellikler aktif!")
+
+    try:
+        users = load_users()
+        if not users:
+            return "Kayıtlı kullanıcı yok!", 200
+
+        for uid in users:
+            send_message(uid, msg)
+            time.sleep(0.3)
+
+        return "✔️ BROADCAST gönderildi", 200
+
+    except Exception as e:
+        return f"HATA: {e}", 500
 
 
 def run():
