@@ -1042,68 +1042,73 @@ def main():
                     send_message(chat_id, f"📦 <b>{sym}</b> güncellendi.\nLot: <b>{yeni_adet:.0f}</b>\nMaliyet: <b>{yeni_maliyet:.2f} TL</b>")
                     continue
 
-                # -------- LİSTE / GÖSTER --------
-                elif cmd in ["liste", "goster", "göster"]:
-                    user_p = portföy.get(uid_key, {})
+# -------- LİSTE / GÖSTER --------
+elif cmd in ["liste", "goster", "göster"]:
+    user_p = portföy.get(uid_key, {})
 
-                    if not user_p:
-                        send_message(
-                            chat_id,
-                            "📦 Portföy boş. Örnek:\n<code>/portföy</code> ekle ASELS 100 54.8"
-                        )
-                        continue
+    if not user_p:
+        send_message(
+            chat_id,
+            "📦 Portföy boş. Örnek:\n<code>/portföy</code> ekle ASELS 100 54.8"
+        )
+        continue
 
-                    lines = ["📦 <b>Portföyün:</b>\n"]
+    lines = ["📦 <b>Portföyün:</b>\n"]
 
-                    genel_maliyet = 0
-                    genel_deger = 0
-                    kz_list = []
+    genel_maliyet = 0
+    genel_deger = 0
+    kz_list = []
 
-                    for sym, pos in user_p.items():
-                        adet = pos["adet"]
-                        maliyet = pos["maliyet"]
-                        toplam = adet * maliyet
+    for sym, pos in user_p.items():
+        adet = pos["adet"]
+        maliyet = pos["maliyet"]
+        toplam = adet * maliyet
 
-                        info = get_price(sym)
-                        fiyat = info["fiyat"] if info else None
+        info = get_price(sym)
+        fiyat = info["fiyat"] if info else None
 
-                        if fiyat:
-                            anlik = fiyat * adet
-                            kz = anlik - toplam
-                            genel_maliyet += toplam
-                            genel_deger += anlik
-                            kz_list.append((sym, kz))
+        if fiyat:
+            anlik = fiyat * adet
+            kz = anlik - toplam
+            genel_maliyet += toplam
+            genel_deger += anlik
+            kz_list.append((sym, kz))
 
-                            yuzde = (kz / toplam) * 100 if toplam > 0 else 0
-                            kz_emoji = "🟢" if kz >= 0 else "🔴"
+            yuzde = (kz / toplam) * 100 if toplam > 0 else 0
+            kz_emoji = "🟢" if kz >= 0 else "🔴"
 
-                            lines.append(
-                                f"📌 <b>{sym}</b>\n"
-                                f"   • Lot: <b>{adet:.0f}</b>\n"
-                                f"   • Maliyet: <b>{maliyet:.2f} TL</b>\n"
-                                f"   • Anlık: <b>{format_price(fiyat)} TL</b>\n"
-                                f"   • Değer: <b>{format_price(anlik)} TL</b>\n"
-                                f"   • {kz_emoji} K/Z: <b>{kz:.2f} TL (%{yuzde:.2f})</b>\n"
-                            )
+            lines.append(
+                f"📌 <b>{sym}</b>\n"
+                f"   • Lot: <b>{adet:.0f}</b>\n"
+                f"   • Maliyet: <b>{maliyet:.2f} TL</b>\n"
+                f"   • Anlık: <b>{format_price(fiyat)} TL</b>\n"
+                f"   • Değer: <b>{format_price(anlik)} TL</b>\n"
+                f"   • {kz_emoji} K/Z: <b>{kz:.2f} TL (%{yuzde:.2f})</b>\n"
+            )
 
-                            # --- HACİM ANALİZİ ---
-                            vol = get_volume_analysis(sym)
-                            if vol:
-                                lines.append(
-                                    f"   • Hacim Değişimi: <b>%{vol['change']}</b>\n"
-                                )
+            # --- HACİM ANALİZİ (FULL DETAYLI) ---
+            vol = get_volume_analysis(sym)
+            if vol:
+                flow = "Para Girişi" if vol["change"] > 0 else "Para Çıkışı"
+                emoji = "🟢" if vol["change"] > 0 else "🔴"
 
-                        else:
-                            lines.append(f"📌 <b>{sym}</b> — ❌ Fiyat alınamadı\n")
+                lines.append("   📊 Hacim Analizi")
+                lines.append(f"   • Günlük Hacim: <b>{format_number(vol['today'])}</b>")
+                lines.append(f"   • 3G Ortalama: <b>{format_number(vol['avg3'])}</b>")
+                lines.append(f"   • {emoji} Para Akışı: <b>%{vol['change']}</b> ({flow})\n")
 
-                    genel_kz = genel_deger - genel_maliyet
-                    genel_yuzde = (genel_kz / genel_maliyet * 100) if genel_maliyet > 0 else 0
-                    gemoji = "🟢" if genel_kz >= 0 else "🔴"
+        else:
+            lines.append(f"📌 <b>{sym}</b> — ❌ Fiyat alınamadı\n")
 
-                    lines.append("——————————————")
-                    lines.append(f"💰 Toplam Maliyet: {format_price(genel_maliyet)} TL")
-                    lines.append(f"📊 Portföy Değeri: {format_price(genel_deger)} TL")
-                    lines.append(f"{gemoji} Genel K/Z: {genel_kz:.2f} TL (%{genel_yuzde:.2f})")
+    genel_kz = genel_deger - genel_maliyet
+    genel_yuzde = (genel_kz / genel_maliyet * 100) if genel_maliyet > 0 else 0
+    gemoji = "🟢" if genel_kz >= 0 else "🔴"
+
+    lines.append("——————————————")
+    lines.append(f"💰 Toplam Maliyet: {format_price(genel_maliyet)} TL")
+    lines.append(f"📊 Portföy Değeri: {format_price(genel_deger)} TL")
+    lines.append(f"{gemoji} Genel K/Z: {genel_kz:.2f} TL (%{genel_yuzde:.2f})")
+
 
                     
                     # ---------------- AI PORTFÖY YORUMU (PROFESYONEL) ----------------
