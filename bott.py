@@ -440,6 +440,34 @@ def get_balance_summary(symbol):
     """Bilanço özeti şu anda pasif."""
     return {"summary": "🤖 <b>Bilanço Özeti</b>\n<b>Kriptos AI:</b> Çok yakında"}
 
+# --- HACİM ANALİZİ FONKSİYONU ---
+def get_volume_analysis(symbol):
+    try:
+        sym = symbol.upper() + ".IS"
+        h = yf.Ticker(sym).history(period="5d")
+
+        if len(h) < 2:
+            return None
+
+        today_vol = h["Volume"].iloc[-1]
+
+        if len(h) >= 4:
+            avg3 = (h["Volume"].iloc[-2] + h["Volume"].iloc[-3] + h["Volume"].iloc[-4]) / 3
+        else:
+            avg3 = h["Volume"].mean()
+
+        change = ((today_vol - avg3) / avg3) * 100 if avg3 > 0 else 0
+
+        return {
+            "today": int(today_vol),
+            "avg3": int(avg3),
+            "change": round(change, 2)
+        }
+
+    except Exception as e:
+        print("Hacim analizi hata:", e)
+        return None
+
 
 # -------------------------MESAJ OLUŞTURMA------------------------- #
 def build_message(symbol):
@@ -459,6 +487,16 @@ def build_message(symbol):
             lines.append(f"🔼 Tavan: {format_price(info['tavan'])} TL")
         if info.get("taban") is not None:
             lines.append(f"🔽 Taban: {format_price(info['taban'])} TL")
+
+     # --- HACİM ANALİZİ ---
+        vol = get_volume_analysis(symbol)
+        if vol:
+            flow = "Para Girişi" if vol["change"] > 0 else "Para Çıkışı"
+            emoji = "🟢" if vol["change"] > 0 else "🔴"
+            lines.append("\n📊 <b>Hacim Analizi</b>")
+            lines.append(f"• Günlük Hacim: {format_number(vol['today'])}")
+            lines.append(f"• 3G Ortalama: {format_number(vol['avg3'])}")
+            lines.append(f"• {emoji} Para Akışı: %{vol['change']} ({flow})")
 
     # --- Teknik Analiz ---
     if tech:
@@ -487,8 +525,7 @@ def build_message(symbol):
     lines.append("\n<b>💬 Görüş & Öneri:</b> @kriptosbtc")
     return "\n".join(lines)
 
-
-# --------------- FAVORİ ÖZETİ (TEKRAR KULLANILABİLİR) ---------------
+###--- FAVORİ-------
 def build_favorite_line(sym):
     info = get_price(sym)
     tech = get_tv_analysis(sym)
@@ -501,10 +538,18 @@ def build_favorite_line(sym):
     rsi_label = map_rsi_label(rsi_val) if rsi_val is not None else "N/A"
     ema_sig = map_ema_signal(tech.get("ema50"), tech.get("ema200")) if tech else "N/A"
 
+    # --- HACİM ANALİZİ ---
+    vol = get_volume_analysis(sym)
+    if vol:
+        vol_txt = f" | Hacim %{vol['change']}"
+    else:
+        vol_txt = ""
+
     return (
         f"• <b>{sym}</b> — {fiyat_txt} TL | "
-        f"RSI: {rsi_label} | EMA(50/200): {ema_sig}"
+        f"RSI: {rsi_label} | EMA(50/200): {ema_sig}{vol_txt}"
     )
+
 
 
 # =============== OTOMATİK FAVORİ GÖNDERİCİ ===============
@@ -997,13 +1042,13 @@ def main():
                     send_message(chat_id, f"📦 <b>{sym}</b> güncellendi.\nLot: <b>{yeni_adet:.0f}</b>\nMaliyet: <b>{yeni_maliyet:.2f} TL</b>")
                     continue
 
-
                 # -------- LİSTE / GÖSTER --------
                 elif cmd in ["liste", "goster", "göster"]:
                     user_p = portföy.get(uid_key, {})
 
                     if not user_p:
-                        send_message(chat_id,
+                        send_message(
+                            chat_id,
                             "📦 Portföy boş. Örnek:\n<code>/portföy</code> ekle ASELS 100 54.8"
                         )
                         continue
@@ -1040,6 +1085,14 @@ def main():
                                 f"   • Değer: <b>{format_price(anlik)} TL</b>\n"
                                 f"   • {kz_emoji} K/Z: <b>{kz:.2f} TL (%{yuzde:.2f})</b>\n"
                             )
+
+                            # --- HACİM ANALİZİ ---
+                            vol = get_volume_analysis(sym)
+                            if vol:
+                                lines.append(
+                                    f"   • Hacim Değişimi: <b>%{vol['change']}</b>\n"
+                                )
+
                         else:
                             lines.append(f"📌 <b>{sym}</b> — ❌ Fiyat alınamadı\n")
 
@@ -1052,6 +1105,7 @@ def main():
                     lines.append(f"📊 Portföy Değeri: {format_price(genel_deger)} TL")
                     lines.append(f"{gemoji} Genel K/Z: {genel_kz:.2f} TL (%{genel_yuzde:.2f})")
 
+                    
                     # ---------------- AI PORTFÖY YORUMU (PROFESYONEL) ----------------
                     ai_prompt = (
                         "Aşağıdaki verileri kullanarak Borsa İstanbul portföyü için çok kısa, net ve "
