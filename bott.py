@@ -1093,10 +1093,6 @@ def main():
 
                     send_message(chat_id, f"📦 <b>{sym}</b> güncellendi.\nLot: <b>{yeni_adet:.0f}</b>\nMaliyet: <b>{yeni_maliyet:.2f} TL</b>")
                     continue
-# -------- EKLE --------
-if cmd == "ekle" and len(parts) >= 5:
-    ...
-    continue
 
 # -------- LİSTE / GÖSTER --------
 elif cmd in ["liste", "goster", "göster"]:
