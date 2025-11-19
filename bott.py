@@ -434,6 +434,42 @@ def combine_recommendation(ema_sig, rsi_label):
         return "SAT"
     return "NÖTR"
 
+def get_volume_analysis(symbol):
+    try:
+        sym = symbol.upper() + ".IS"
+        t = yf.Ticker(sym)
+        h = t.history(period="1mo")  # 1 aylık hacim verisi
+
+        if len(h) < 5:
+            return None
+
+        # Günlük hacim
+        vol_today = int(h["Volume"].iloc[-1])
+
+        # 3 günlük ortalama
+        vol_3g = int(h["Volume"].iloc[-3:].mean())
+
+        # 5 günlük ortalama
+        vol_5g = int(h["Volume"].iloc[-5:].mean())
+
+        # 1 aylık trend
+        first = h["Volume"].iloc[0]
+        last = h["Volume"].iloc[-1]
+        trend_percent = ((last - first) / first) * 100 if first > 0 else 0
+
+        trend_text = "Yükseliş" if trend_percent >= 0 else "Düşüş"
+
+        return {
+            "today": vol_today,
+            "vol3": vol_3g,
+            "vol5": vol_5g,
+            "trend": trend_percent,
+            "trend_text": trend_text
+        }
+
+    except:
+        return None
+
 
 # --- BİLANÇO ÖZETİ (PASİF - Placeholder Versiyonu) ---
 def get_balance_summary(symbol):
@@ -441,7 +477,8 @@ def get_balance_summary(symbol):
     return {"summary": "🤖 <b>Bilanço Özeti</b>\n<b>Kriptos AI:</b> Çok yakında"}
 
 
-# -------------------------MESAJ OLUŞTURMA------------------------- #
+
+
 def build_message(symbol):
     symbol = symbol.strip().upper()
     info = get_price(symbol)
@@ -472,6 +509,38 @@ def build_message(symbol):
         lines.append(f"🔄 EMA(50/200): {ema_sig}")
         lines.append(f"🤖 <b>Kriptos AI:</b> {overall}")
 
+    # --- Hacim Analizi ---
+    vol = get_volume_analysis(symbol)
+    if vol:
+        lines.append("\n📊 <b>Hacim Analizi</b>")
+        lines.append(f"📌 Günlük Hacim: {format_number(vol['today'])}")
+        lines.append(f"📌 3G Ortalama: {format_number(vol['vol3'])}")
+        lines.append(f"📌 5G Ortalama: {format_number(vol['vol5'])}")
+        lines.append(f"📌 1 Ay Trend: %{vol['trend']:.2f} ({vol['trend_text']})")
+
+        # AI hacim yorumu
+        ai_prompt2 = (
+            f"Günlük hacim {vol['today']}, 3 günlük ortalama {vol['vol3']}, "
+            f"5 günlük ortalama {vol['vol5']}, aylık trend %{vol['trend']:.2f}. "
+            "Bu verileri kısa ve profesyonel şekilde yorumla. Yatırım tavsiyesi verme."
+        )
+
+        try:
+            r2 = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": "Bearer " + os.getenv("OPENAI_API_KEY")},
+                json={
+                    "model": "gpt-4o-mini",
+                    "messages": [{"role": "user", "content": ai_prompt2}],
+                    "max_tokens": 120,
+                }
+            )
+            ai_text2 = r2.json()["choices"][0]["message"]["content"]
+        except:
+            ai_text2 = "⚠️ AI yorum alınamadı."
+
+        lines.append(f"📌 <b>Kriptos AI:</b> {ai_text2}")
+
     # --- Bilanço Özeti ---
     fin = get_balance_summary(symbol)
     if fin and fin.get("summary"):
@@ -492,19 +561,38 @@ def build_message(symbol):
 def build_favorite_line(sym):
     info = get_price(sym)
     tech = get_tv_analysis(sym)
+    vol = get_volume_analysis(sym)
 
     if not info:
         return f"• {sym}: veri yok"
 
     fiyat_txt = format_price(info.get("fiyat"))
+
+    # RSI – EMA
     rsi_val = tech.get("rsi") if tech else None
     rsi_label = map_rsi_label(rsi_val) if rsi_val is not None else "N/A"
-    ema_sig = map_ema_signal(tech.get("ema50"), tech.get("ema200")) if tech else "N/A"
+    ema_sig = map_ema_signal(
+        tech.get("ema50") if tech else None,
+        tech.get("ema200") if tech else None
+    ) if tech else "N/A"
+
+    # Hacim Metni
+    if vol:
+        hacim_text = (
+            f"Hacim: {format_number(vol['today'])} | "
+            f"3G: {format_number(vol['vol3'])} | "
+            f"5G: {format_number(vol['vol5'])} | "
+            f"Trend: %{vol['trend']:.2f}"
+        )
+    else:
+        hacim_text = "Hacim: veri yok"
 
     return (
-        f"• <b>{sym}</b> — {fiyat_txt} TL | "
-        f"RSI: {rsi_label} | EMA(50/200): {ema_sig}"
+        f"• <b>{sym}</b> — {fiyat_txt} TL\n"
+        f"   📊 {hacim_text}\n"
+        f"   ⚡ RSI: {rsi_label} | EMA(50/200): {ema_sig}"
     )
+
 
 
 # =============== OTOMATİK FAVORİ GÖNDERİCİ ===============
@@ -802,13 +890,12 @@ def main():
                     "<code>/alarm</code> ekle ASELS 190\n"
                     "<code>/alarm</code> sil ASELS 190\n"
                     "<code>/alarm</code> liste\n\n"
-                    
                     "📦 Portföy komutları:\n"
                     "<code>/portföy</code> ekle ASELS 100 (LOT) 54.80 (Maliyet). Şeklinde giriniz.\n"
                     "<code>/portföy</code> göster\n"
                     "<code>/portföy</code> sil ASELS\n\n"
 
-                    "❗❗ Unutmayın Yapay zeka ve Botlar yanılabilir. Bu bot Yatırım Tavsiyesi Vermez! Tüm sorumluluk kullanıcıya aittir!"                    
+                    "❗❗ Unutmayın Yapay zeka ve Botlar yanılabilir. Bu bot Yatırım Tavsiyesi Vermez! Tüm sorumluluk kullanıcıya aittir!"
                 )
                 send_message(chat_id, msg)
                 continue
@@ -1004,7 +1091,7 @@ def main():
 
                     if not user_p:
                         send_message(chat_id,
-                            "📦 Portföy boş. Örnek:\n<code>/portföy</code> ekle ASELS 100 54.8"
+                            "📦 Portföy boş. Örnek:\n<code>/portföy</code> ekle ASELS 100(LOT Sayısı.) 54.8(Maaliyet.)"
                         )
                         continue
 
@@ -1042,6 +1129,19 @@ def main():
                             )
                         else:
                             lines.append(f"📌 <b>{sym}</b> — ❌ Fiyat alınamadı\n")
+
+                            # --- Hacim Analizi ---
+                            vol = get_volume_analysis(sym)
+                            if vol:
+                                lines.append(
+                                    f"   • 📊 Hacim: {format_number(vol['today'])} | "
+                                    f"3G: {format_number(vol['vol3'])} | "
+                                    f"5G: {format_number(vol['vol5'])} | "
+                                    f"Trend: %{vol['trend']:.2f} ({vol['trend_text']})\n"
+                                )
+                            else:
+                                lines.append("   • 📊 Hacim: veri yok\n")
+
 
                     genel_kz = genel_deger - genel_maliyet
                     genel_yuzde = (genel_kz / genel_maliyet * 100) if genel_maliyet > 0 else 0
