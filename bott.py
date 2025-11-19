@@ -250,7 +250,7 @@ def analyze_news_with_ai(news_text):
             json={
                 "model": "gpt-4o-mini",
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 120,
+                "max_tokens": 350,
             },
             timeout=15,
         )
@@ -532,7 +532,7 @@ def build_message(symbol):
                 json={
                     "model": "gpt-4o-mini",
                     "messages": [{"role": "user", "content": ai_prompt2}],
-                    "max_tokens": 120,
+                    "max_tokens": 350,
                 }
             )
             ai_text2 = r2.json()["choices"][0]["message"]["content"]
