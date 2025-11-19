@@ -1094,190 +1094,188 @@ def main():
                     send_message(chat_id, f"📦 <b>{sym}</b> güncellendi.\nLot: <b>{yeni_adet:.0f}</b>\nMaliyet: <b>{yeni_maliyet:.2f} TL</b>")
                     continue
 
-# -------- LİSTE / GÖSTER --------
-elif cmd in ["liste", "goster", "göster"]:
-    user_p = portföy.get(uid_key, {})
+                # -------- LİSTE / GÖSTER --------
+                elif cmd in ["liste", "goster", "göster"]:
+                    user_p = portföy.get(uid_key, {})
 
-    if not user_p:
-        send_message(
-            chat_id,
-            "📦 Portföy boş. Örnek:\n<code>/portföy</code> ekle ASELS 100 54.8"
-        )
-        continue
+                    if not user_p:
+                        send_message(
+                            chat_id,
+                            "📦 Portföy boş. Örnek:\n<code>/portföy</code> ekle ASELS 100 54.8"
+                        )
+                        continue
 
-    lines = ["📦 <b>Portföyün:</b>\n"]
+                    lines = ["📦 <b>Portföyün:</b>\n"]
 
-    genel_maliyet = 0
-    genel_deger = 0
-    kz_list = []
+                    genel_maliyet = 0
+                    genel_deger = 0
+                    kz_list = []
 
-    for sym, pos in user_p.items():
-        adet = pos["adet"]
-        maliyet = pos["maliyet"]
-        toplam = adet * maliyet
+                    for sym, pos in user_p.items():
+                        adet = pos["adet"]
+                        maliyet = pos["maliyet"]
+                        toplam = adet * maliyet
 
-        info = get_price(sym)
-        fiyat = info["fiyat"] if info else None
+                        info = get_price(sym)
+                        fiyat = info["fiyat"] if info else None
 
-        if fiyat:
-            anlik = fiyat * adet
-            kz = anlik - toplam
-            genel_maliyet += toplam
-            genel_deger += anlik
-            kz_list.append((sym, kz))
+                        if fiyat:
+                            anlik = fiyat * adet
+                            kz = anlik - toplam
+                            genel_maliyet += toplam
+                            genel_deger += anlik
+                            kz_list.append((sym, kz))
 
-            yuzde = (kz / toplam) * 100 if toplam > 0 else 0
-            kz_emoji = "🟢" if kz >= 0 else "🔴"
+                            yuzde = (kz / toplam) * 100 if toplam > 0 else 0
+                            kz_emoji = "🟢" if kz >= 0 else "🔴"
 
-            lines.append(
-                f"📌 <b>{sym}</b>\n"
-                f"   • Lot: <b>{adet:.0f}</b>\n"
-                f"   • Maliyet: <b>{maliyet:.2f} TL</b>\n"
-                f"   • Anlık: <b>{format_price(fiyat)} TL</b>\n"
-                f"   • Değer: <b>{format_price(anlik)} TL</b>\n"
-                f"   • {kz_emoji} K/Z: <b>{kz:.2f} TL (%{yuzde:.2f})</b>\n"
-            )
+                            lines.append(
+                                f"📌 <b>{sym}</b>\n"
+                                f"   • Lot: <b>{adet:.0f}</b>\n"
+                                f"   • Maliyet: <b>{maliyet:.2f} TL</b>\n"
+                                f"   • Anlık: <b>{format_price(fiyat)} TL</b>\n"
+                                f"   • Değer: <b>{format_price(anlik)} TL</b>\n"
+                                f"   • {kz_emoji} K/Z: <b>{kz:.2f} TL (%{yuzde:.2f})</b>\n"
+                            )
 
-            vol = get_volume_analysis(sym)
-            if vol:
-                lines.append(
-                    f"   📊 Hacim: G:{format_number(vol['today'])} | "
-                    f"3G:{format_number(vol['avg3'])} | "
-                    f"5G:{format_number(vol['avg5'])} | "
-                    f"Trend:%{vol['month_trend']} {vol['trend_dir']} | "
-                    f"Skor:{vol['flow_score']}/100\n"
-                )
-            else:
-                lines.append("   📊 Hacim: veri yok\n")
+                            vol = get_volume_analysis(sym)
+                            if vol:
+                                lines.append(
+                                    f"   📊 Hacim: G:{format_number(vol['today'])} | "
+                                    f"3G:{format_number(vol['avg3'])} | "
+                                    f"5G:{format_number(vol['avg5'])} | "
+                                    f"Trend:%{vol['month_trend']} {vol['trend_dir']} | "
+                                    f"Skor:{vol['flow_score']}/100\n"
+                                )
+                            else:
+                                lines.append("   📊 Hacim: veri yok\n")
 
-        else:
-            lines.append(f"📌 <b>{sym}</b> — ❌ Fiyat alınamadı\n")
+                        else:
+                            lines.append(f"📌 <b>{sym}</b> — ❌ Fiyat alınamadı\n")
 
-    # ========= GENEL TOPLAM =========
-    genel_kz = genel_deger - genel_maliyet
-    genel_yuzde = (genel_kz / genel_maliyet * 100) if genel_maliyet > 0 else 0
-    gemoji = "🟢" if genel_kz >= 0 else "🔴"
+                    # ========= GENEL TOPLAM =========
+                    genel_kz = genel_deger - genel_maliyet
+                    genel_yuzde = (genel_kz / genel_maliyet * 100) if genel_maliyet > 0 else 0
+                    gemoji = "🟢" if genel_kz >= 0 else "🔴"
 
-    lines.append("——————————————")
-    lines.append(f"💰 Toplam Maliyet: {format_price(genel_maliyet)} TL")
-    lines.append(f"📊 Portföy Değeri: {format_price(genel_deger)} TL")
-    lines.append(f"{gemoji} Genel K/Z: {genel_kz:.2f} TL (%{genel_yuzde:.2f})")
+                    lines.append("——————————————")
+                    lines.append(f"💰 Toplam Maliyet: {format_price(genel_maliyet)} TL")
+                    lines.append(f"📊 Portföy Değeri: {format_price(genel_deger)} TL")
+                    lines.append(f"{gemoji} Genel K/Z: {genel_kz:.2f} TL (%{genel_yuzde:.2f})")
 
-    # ---------------- AI PORTFÖY YORUMU ----------------
-    ai_prompt = (
-        "Aşağıdaki verileri kullanarak Borsa İstanbul portföyü için çok kısa, net ve "
-        "yalnızca analitik bir değerlendirme yap. Profesyonel bir ton kullan, "
-        "Metin 8-10 kısa cümleden oluşsun, sade ve anlaşılır olsun.\n\n"
-        f"Toplam maliyet: {genel_maliyet:.2f} TL\n"
-        f"Güncel değer: {genel_deger:.2f} TL\n"
-        f"Kar/Zarar: {genel_kz:.2f} TL (%{genel_yuzde:.2f})\n\n"
-        "Yorum formatı:\n"
-        "📌 Genel Durum\n"
-        "⚠️ Risk Görünümü\n"
-        "💠 Portföy Yapısı\n"
-        "📝 Sonuç"
-    )
+                    # ---------------- AI PORTFÖY YORUMU ----------------
+                    ai_prompt = (
+                        "Aşağıdaki verileri kullanarak Borsa İstanbul portföyü için çok kısa, net ve "
+                        "yalnızca analitik bir değerlendirme yap. Profesyonel bir ton kullan, "
+                        "Metin 8-10 kısa cümleden oluşsun, sade ve anlaşılır olsun.\n\n"
+                        f"Toplam maliyet: {genel_maliyet:.2f} TL\n"
+                        f"Güncel değer: {genel_deger:.2f} TL\n"
+                        f"Kar/Zarar: {genel_kz:.2f} TL (%{genel_yuzde:.2f})\n\n"
+                        "Yorum formatı:\n"
+                        "📌 Genel Durum\n"
+                        "⚠️ Risk Görünümü\n"
+                        "💠 Portföy Yapısı\n"
+                        "📝 Sonuç"
+                    )
 
-    try:
-        r = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": "Bearer " + os.getenv("OPENAI_API_KEY")},
-            json={
-                "model": "gpt-4o-mini",
-                "messages": [{"role": "user", "content": ai_prompt}],
-                "max_tokens": 600,
-            }
-        )
-        ai_comment = r.json()["choices"][0]["message"]["content"]
-    except:
-        ai_comment = "⚠️ AI portföy yorumu oluşturulamadı."
+                    try:
+                        r = requests.post(
+                            "https://api.openai.com/v1/chat/completions",
+                            headers={"Authorization": "Bearer " + os.getenv("OPENAI_API_KEY")},
+                            json={
+                                "model": "gpt-4o-mini",
+                                "messages": [{"role": "user", "content": ai_prompt}],
+                                "max_tokens": 600,
+                            }
+                        )
+                        ai_comment = r.json()["choices"][0]["message"]["content"]
+                    except:
+                        ai_comment = "⚠️ AI portföy yorumu oluşturulamadı."
 
-    lines.append("\n🤖 <b>Kriptos AI Portföy Yorumu</b>\n" + ai_comment)
+                    lines.append("\n🤖 <b>Kriptos AI Portföy Yorumu</b>\n" + ai_comment)
 
-    # ---------------- PNG — PROFESYONEL ----------------
-    try:
-        names = [x[0] for x in kz_list]
-        values = [x[1] for x in kz_list]
+                    # ---------------- PNG — PROFESYONEL ----------------
+                    try:
+                        names = [x[0] for x in kz_list]
+                        values = [x[1] for x in kz_list]
 
-        if names:
-            plt.figure(figsize=(10, 5), dpi=160)
-            ax = plt.gca()
+                        if names:
+                            plt.figure(figsize=(10, 5), dpi=160)
+                            ax = plt.gca()
 
-            ax.set_facecolor("white")
-            ax.grid(axis="y", linestyle="--", linewidth=0.5, alpha=0.6)
+                            ax.set_facecolor("white")
+                            ax.grid(axis="y", linestyle="--", linewidth=0.5, alpha=0.6)
 
-            colors = ["#27ae60" if v >= 0 else "#c0392b" for v in values]
+                            colors = ["#27ae60" if v >= 0 else "#c0392b" for v in values]
 
-            bars = plt.bar(names, values, color=colors, edgecolor="#333", linewidth=0.8)
+                            bars = plt.bar(names, values, color=colors, edgecolor="#333", linewidth=0.8)
 
-            today = datetime.now().strftime("%d.%m.%Y")
-            plt.title(f"Hisse Bazlı Kar/Zarar — {today}", fontsize=14, fontweight="bold")
+                            today = datetime.now().strftime("%d.%m.%Y")
+                            plt.title(f"Hisse Bazlı Kar/Zarar — {today}", fontsize=14, fontweight="bold")
 
-            plt.ylabel("TL")
+                            plt.ylabel("TL")
 
-            for bar, val in zip(bars, values):
-                plt.text(
-                    bar.get_x() + bar.get_width()/2,
-                    bar.get_height(),
-                    f"{val:.0f}",
-                    ha="center",
-                    va="bottom",
-                    fontsize=9,
-                    fontweight="bold"
-                )
+                            for bar, val in zip(bars, values):
+                                plt.text(
+                                    bar.get_x() + bar.get_width()/2,
+                                    bar.get_height(),
+                                    f"{val:.0f}",
+                                    ha="center",
+                                    va="bottom",
+                                    fontsize=9,
+                                    fontweight="bold"
+                                )
 
-            plt.tight_layout()
+                            plt.tight_layout()
 
-            graph_path = f"data/portfoy_graph_{uid_key}.png"
-            plt.savefig(graph_path, bbox_inches="tight")
-            plt.close()
+                            graph_path = f"data/portfoy_graph_{uid_key}.png"
+                            plt.savefig(graph_path, bbox_inches="tight")
+                            plt.close()
 
-            with open(graph_path, "rb") as img:
-                requests.post(URL + "sendPhoto", data={"chat_id": chat_id}, files={"photo": img})
-    except Exception as e:
-        print("Grafik hatası:", e)
+                            with open(graph_path, "rb") as img:
+                                requests.post(URL + "sendPhoto", data={"chat_id": chat_id}, files={"photo": img})
+                    except Exception as e:
+                        print("Grafik hatası:", e)
 
-    send_message(chat_id, "\n".join(lines))
-    continue
+                    send_message(chat_id, "\n".join(lines))
+                    continue
 
+                # -------- SİL --------
+                elif cmd == "sil" and len(parts) >= 3:
+                    sym = parts[2].upper()
+                    user_p = portföy.get(uid_key, {})
 
-# -------- SİL --------
-elif cmd == "sil" and len(parts) >= 3:
-    sym = parts[2].upper()
-    user_p = portföy.get(uid_key, {})
+                    if sym in user_p:
+                        del user_p[sym]
+                        portföy[uid_key] = user_p
+                        save_portfoy(portföy)
+                        send_message(chat_id, f"🗑️ {sym} silindi.")
+                    else:
+                        send_message(chat_id, f"⚠️ Portföyde {sym} yok.")
+                    continue
 
-    if sym in user_p:
-        del user_p[sym]
-        portföy[uid_key] = user_p
-        save_portfoy(portföy)
-        send_message(chat_id, f"🗑️ {sym} silindi.")
-    else:
-        send_message(chat_id, f"⚠️ Portföyde {sym} yok.")
-    continue
-
-
-# -------- HATALI KULLANIM --------
-else:
-    send_message(
-        chat_id,
-        "📦 Kullanım:\n"
-        "<code>/portföy</code> ekle ASELS 100(LOT Adedi) 54.8(Maliyet)\n"
-        "<code>/portföy</code> sil ASELS\n"
-        "<code>/portföy</code> göster"
-    )
-    continue
+                # -------- HATALI KULLANIM --------
+                else:
+                    send_message(
+                        chat_id,
+                        "📦 Kullanım:\n"
+                        "<code>/portföy</code> ekle ASELS 100(LOT Adedi) 54.8(Maliyet)\n"
+                        "<code>/portföy</code> sil ASELS\n"
+                        "<code>/portföy</code> göster"
+                    )
+                    continue
 
 
-# ========================= HİSSE SORGUSU =========================
-symbol = text.split()[0].lstrip("/").upper()
+            # ========================= HİSSE SORGUSU =========================
+            symbol = text.split()[0].lstrip("/").upper()
 
-if not is_valid_symbol(symbol):
-    send_message(chat_id, "⚠️ Lütfen hisse kodunu doğru giriniz. Örnek: ASELS / asels")
-    continue
+            if not is_valid_symbol(symbol):
+                send_message(chat_id, "⚠️ Lütfen hisse kodunu doğru giriniz. Örnek: ASELS / asels")
+                continue
 
-reply = build_message(symbol)
-send_message(chat_id, reply)
-time.sleep(0.8)
+            reply = build_message(symbol)
+            send_message(chat_id, reply)
+            time.sleep(0.8)
 
 
 # =============== FLASK (Render Portu) ===============
