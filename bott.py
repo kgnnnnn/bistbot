@@ -1182,104 +1182,106 @@ elif cmd in ["liste", "goster", "göster"]:
         "📝 Sonuç"
     )
 
+    try:
+        r = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": "Bearer " + os.getenv("OPENAI_API_KEY")},
+            json={
+                "model": "gpt-4o-mini",
+                "messages": [{"role": "user", "content": ai_prompt}],
+                "max_tokens": 600,
+            }
+        )
+        ai_comment = r.json()["choices"][0]["message"]["content"]
+    except:
+        ai_comment = "⚠️ AI portföy yorumu oluşturulamadı."
+
+    lines.append("\n🤖 <b>Kriptos AI Portföy Yorumu</b>\n" + ai_comment)
+
+    # ---------------- PNG — PROFESYONEL ----------------
+    try:
+        names = [x[0] for x in kz_list]
+        values = [x[1] for x in kz_list]
+
+        if names:
+            plt.figure(figsize=(10, 5), dpi=160)
+            ax = plt.gca()
+
+            ax.set_facecolor("white")
+            ax.grid(axis="y", linestyle="--", linewidth=0.5, alpha=0.6)
+
+            colors = ["#27ae60" if v >= 0 else "#c0392b" for v in values]
+
+            bars = plt.bar(names, values, color=colors, edgecolor="#333", linewidth=0.8)
+
+            today = datetime.now().strftime("%d.%m.%Y")
+            plt.title(f"Hisse Bazlı Kar/Zarar — {today}", fontsize=14, fontweight="bold")
+
+            plt.ylabel("TL")
+
+            for bar, val in zip(bars, values):
+                plt.text(
+                    bar.get_x() + bar.get_width()/2,
+                    bar.get_height(),
+                    f"{val:.0f}",
+                    ha="center",
+                    va="bottom",
+                    fontsize=9,
+                    fontweight="bold"
+                )
+
+            plt.tight_layout()
+
+            graph_path = f"data/portfoy_graph_{uid_key}.png"
+            plt.savefig(graph_path, bbox_inches="tight")
+            plt.close()
+
+            with open(graph_path, "rb") as img:
+                requests.post(URL + "sendPhoto", data={"chat_id": chat_id}, files={"photo": img})
+    except Exception as e:
+        print("Grafik hatası:", e)
+
+    send_message(chat_id, "\n".join(lines))
+    continue
 
 
-                    try:
-                        r = requests.post(
-                            "https://api.openai.com/v1/chat/completions",
-                            headers={"Authorization": "Bearer " + os.getenv("OPENAI_API_KEY")},
-                            json={
-                                "model": "gpt-4o-mini",
-                                "messages": [{"role": "user", "content": ai_prompt}],
-                                "max_tokens": 600,
-                            }
-                        )
-                        ai_comment = r.json()["choices"][0]["message"]["content"]
-                    except:
-                        ai_comment = "⚠️ AI portföy yorumu oluşturulamadı."
+# -------- SİL --------
+elif cmd == "sil" and len(parts) >= 3:
+    sym = parts[2].upper()
+    user_p = portföy.get(uid_key, {})
 
-                    lines.append("\n🤖 <b>Kriptos AI Portföy Yorumu</b>\n" + ai_comment)
-
-                    # ---------------- PNG — PROFESYONEL ----------------
-                    try:
-                        names = [x[0] for x in kz_list]
-                        values = [x[1] for x in kz_list]
-
-                        if names:
-                            plt.figure(figsize=(10, 5), dpi=160)
-                            ax = plt.gca()
-
-                            ax.set_facecolor("white")
-                            ax.grid(axis="y", linestyle="--", linewidth=0.5, alpha=0.6)
-
-                            colors = ["#27ae60" if v >= 0 else "#c0392b" for v in values]
-
-                            bars = plt.bar(names, values, color=colors, edgecolor="#333", linewidth=0.8)
-
-                            today = datetime.now().strftime("%d.%m.%Y")
-                            plt.title(f"Hisse Bazlı Kar/Zarar — {today}", fontsize=14, fontweight="bold")
-
-                            plt.ylabel("TL")
-
-                            for bar, val in zip(bars, values):
-                                plt.text(bar.get_x() + bar.get_width()/2, bar.get_height(),
-                                         f"{val:.0f}", ha="center", va="bottom",
-                                         fontsize=9, fontweight="bold")
-
-                            plt.tight_layout()
-
-                            graph_path = f"data/portfoy_graph_{uid_key}.png"
-                            plt.savefig(graph_path, bbox_inches="tight")
-                            plt.close()
-
-                            with open(graph_path, "rb") as img:
-                                requests.post(URL + "sendPhoto", data={"chat_id": chat_id}, files={"photo": img})
-                    except Exception as e:
-                        print("Grafik hatası:", e)
-
-                    send_message(chat_id, "\n".join(lines))
-                    continue
+    if sym in user_p:
+        del user_p[sym]
+        portföy[uid_key] = user_p
+        save_portfoy(portföy)
+        send_message(chat_id, f"🗑️ {sym} silindi.")
+    else:
+        send_message(chat_id, f"⚠️ Portföyde {sym} yok.")
+    continue
 
 
-                # -------- SİL --------
-                elif cmd == "sil" and len(parts) >= 3:
-                    sym = parts[2].upper()
-                    user_p = portföy.get(uid_key, {})
-
-                    if sym in user_p:
-                        del user_p[sym]
-                        portföy[uid_key] = user_p
-                        save_portfoy(portföy)
-                        send_message(chat_id, f"🗑️ {sym} silindi.")
-                    else:
-                        send_message(chat_id, f"⚠️ Portföyde {sym} yok.")
-                    continue
+# -------- HATALI KULLANIM --------
+else:
+    send_message(
+        chat_id,
+        "📦 Kullanım:\n"
+        "<code>/portföy</code> ekle ASELS 100(LOT Adedi) 54.8(Maliyet)\n"
+        "<code>/portföy</code> sil ASELS\n"
+        "<code>/portföy</code> göster"
+    )
+    continue
 
 
-                else:
-                    send_message(chat_id,
-                        "📦 Kullanım:\n"
-                        "<code>/portföy</code> ekle ASELS 100(LOT Adedi) 54.8(Maliyet). Şeklinde giriniz.\n"
-                        "<code>/portföy</code> sil ASELS\n"
-                        "<code>/portföy</code> göster\n"
-                        
-                    )
-                    continue
+# ========================= HİSSE SORGUSU =========================
+symbol = text.split()[0].lstrip("/").upper()
 
+if not is_valid_symbol(symbol):
+    send_message(chat_id, "⚠️ Lütfen hisse kodunu doğru giriniz. Örnek: ASELS / asels")
+    continue
 
-            # ========================= HİSSE SORGUSU =========================
-            symbol = text.split()[0].lstrip("/").upper()
-
-            if not is_valid_symbol(symbol):
-                send_message(chat_id, "⚠️ Lütfen hisse kodunu doğru giriniz. Örnek: ASELS / asels")
-                continue
-
-            reply = build_message(symbol)
-            send_message(chat_id, reply)
-            time.sleep(0.8)
-
-
-        time.sleep(0.5)
+reply = build_message(symbol)
+send_message(chat_id, reply)
+time.sleep(0.8)
 
 
 # =============== FLASK (Render Portu) ===============
