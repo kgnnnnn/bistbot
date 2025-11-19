@@ -250,7 +250,7 @@ def analyze_news_with_ai(news_text):
             json={
                 "model": "gpt-4o-mini",
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 350,
+                "max_tokens": 500,
             },
             timeout=15,
         )
@@ -264,7 +264,7 @@ def analyze_news_with_ai(news_text):
         return "⚠️ AI yorum alınamadı."
 
 
-# =============== YAHOO FİYAT (Açık/Kapalı Akıllı Sistem – Hatasız) ===============
+#=============== YAHOO FİYAT (Açık/Kapalı Akıllı Sistem – Hatasız) ===============
 # =================== BIST UYUMLU — TAM FALLOUGHLU GET_PRICE ===================
 def get_price(symbol):
     """
@@ -532,7 +532,7 @@ def build_message(symbol):
                 json={
                     "model": "gpt-4o-mini",
                     "messages": [{"role": "user", "content": ai_prompt2}],
-                    "max_tokens": 350,
+                    "max_tokens": 500,
                 }
             )
             ai_text2 = r2.json()["choices"][0]["message"]["content"]
