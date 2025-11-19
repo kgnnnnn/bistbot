@@ -736,19 +736,29 @@ def daily_report_loop():
     while True:
         try:
             now = now_istanbul()
-            if now.strftime("%H:%M") == "09:00":
-                if _last_daily_send != now.strftime("%Y-%m-%d"):
-                    _last_daily_send = now.strftime("%Y-%m-%d")
+            saat = now.strftime("%H:%M")
+
+            # --- 09:00 Sabah Raporu ---
+            if saat == "09:00":
+                if _last_daily_send != now.strftime("%Y-%m-%d 09:00"):
+                    _last_daily_send = now.strftime("%Y-%m-%d 09:00")
+
                     report = build_daily_summary()
-
-                    # Raporu göndereceğimiz kullanıcılar (HERKES)
-                    targets = set()
-
                     users = load_users()
-                    for uid in users:
-                        targets.add(uid)
 
-                    for uid in targets:
+                    for uid in users:
+                        send_message(uid, report)
+                        time.sleep(0.5)
+
+            # --- 18:10 Akşam Raporu ---
+            if saat == "18:10":
+                if _last_daily_send != now.strftime("%Y-%m-%d 18:10"):
+                    _last_daily_send = now.strftime("%Y-%m-%d 18:10")
+
+                    report = build_daily_summary()
+                    users = load_users()
+
+                    for uid in users:
                         send_message(uid, report)
                         time.sleep(0.5)
 
