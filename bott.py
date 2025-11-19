@@ -1093,7 +1093,6 @@ def main():
 
                     send_message(chat_id, f"📦 <b>{sym}</b> güncellendi.\nLot: <b>{yeni_adet:.0f}</b>\nMaliyet: <b>{yeni_maliyet:.2f} TL</b>")
                     continue
-
 # -------- LİSTE / GÖSTER --------
 elif cmd in ["liste", "goster", "göster"]:
     user_p = portföy.get(uid_key, {})
@@ -1153,6 +1152,7 @@ elif cmd in ["liste", "goster", "göster"]:
         else:
             lines.append(f"📌 <b>{sym}</b> — ❌ Fiyat alınamadı\n")
 
+    # ========= GENEL TOPLAM =========
     genel_kz = genel_deger - genel_maliyet
     genel_yuzde = (genel_kz / genel_maliyet * 100) if genel_maliyet > 0 else 0
     gemoji = "🟢" if genel_kz >= 0 else "🔴"
@@ -1161,6 +1161,7 @@ elif cmd in ["liste", "goster", "göster"]:
     lines.append(f"💰 Toplam Maliyet: {format_price(genel_maliyet)} TL")
     lines.append(f"📊 Portföy Değeri: {format_price(genel_deger)} TL")
     lines.append(f"{gemoji} Genel K/Z: {genel_kz:.2f} TL (%{genel_yuzde:.2f})")
+
 
 
                     # ---------------- AI PORTFÖY YORUMU (PROFESYONEL) ----------------
