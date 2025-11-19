@@ -843,7 +843,6 @@ def main():
     Thread(target=alarm_check_loop, daemon=True).start()
     Thread(target=daily_report_loop, daemon=True).start()
 
-
     last_update_id = None    
     processed = set()
     favorites = load_favorites()
@@ -854,7 +853,6 @@ def main():
     def is_valid_symbol(sym):
         sym = sym.upper()
         return sym.isalpha() and 2 <= len(sym) <= 5
-
 
     while True:
         updates = get_updates(last_update_id)
@@ -879,6 +877,7 @@ def main():
 
             if not chat_id or not text:
                 continue
+
             # =============== KULLANICI KAYDI (HERKES 09:00 RAPORU ALSIN) ===============
             users = load_users()
             if str(chat_id) not in users:
@@ -906,12 +905,10 @@ def main():
                     "<code>/portföy</code> ekle ASELS 100 (LOT) 54.80 (Maliyet). Şeklinde giriniz.\n"
                     "<code>/portföy</code> göster\n"
                     "<code>/portföy</code> sil ASELS\n\n"
-
                     "❗❗ Unutmayın Yapay zeka ve Botlar yanılabilir. Bu bot Yatırım Tavsiyesi Vermez! Tüm sorumluluk kullanıcıya aittir!"
                 )
                 send_message(chat_id, msg)
                 continue
-
 
             # ========================= FAVORİ =========================
             if text.lower().startswith("/favori"):
@@ -966,7 +963,6 @@ def main():
                     )
                     continue
 
-
             # ========================= ALARM =========================
             if text.lower().startswith("/alarm"):
                 parts = text.split()
@@ -1009,7 +1005,6 @@ def main():
                     send_message(chat_id, f"🔔 <b>{sym}</b> için {target} TL ({dir_text}) alarmı kaydedildi.")
                     continue
 
-
                 elif cmd in ["liste", "goster"]:
                     uid_key = str(chat_id)
                     user_alarms = alarms.get(uid_key, [])
@@ -1025,7 +1020,6 @@ def main():
                             lines.append(f"• {sym} — {t} TL ({d})")
                         send_message(chat_id, "\n".join(lines))
                     continue
-
 
                 elif cmd == "sil" and len(parts) >= 4:
                     sym = parts[2].upper()
@@ -1043,7 +1037,6 @@ def main():
                         send_message(chat_id, "🗑️ Alarm silindi.")
                     continue
 
-
                 else:
                     send_message(chat_id,
                         "🔔 Kullanım:\n"
@@ -1052,7 +1045,6 @@ def main():
                         "<code>/alarm</code> liste"
                     )
                     continue
-
 
             # ========================= PORTFÖY =========================
             low = text.lower()
@@ -1096,7 +1088,6 @@ def main():
                     send_message(chat_id, f"📦 <b>{sym}</b> güncellendi.\nLot: <b>{yeni_adet:.0f}</b>\nMaliyet: <b>{yeni_maliyet:.2f} TL</b>")
                     continue
 
-
                 # -------- LİSTE / GÖSTER --------
                 elif cmd in ["liste", "goster", "göster"]:
                     user_p = portföy.get(uid_key, {})
@@ -1137,23 +1128,21 @@ def main():
                                 f"   • Maliyet: <b>{maliyet:.2f} TL</b>\n"
                                 f"   • Anlık: <b>{format_price(fiyat)} TL</b>\n"
                                 f"   • Değer: <b>{format_price(anlik)} TL</b>\n"
-                                f"   • {kz_emoji} K/Z: <b>{kz:.2f} TL (%{yuzde:.2f})</b>\n"
+                                f"   • {kz_emoji} K/Z: <b>{kz:.2f} TL (%{yuzde:.2f})</b>"
                             )
                         else:
-                            lines.append(f"📌 <b>{sym}</b> — ❌ Fiyat alınamadı\n")
+                            lines.append(f"📌 <b>{sym}</b> — ❌ Fiyat alınamadı")
 
-                            # --- Hacim Analizi ---
+                        # --- Hacim Analizi (her hisse için) ---
                         vol = get_volume_analysis(sym)
                         if vol:
-                            lines.append(
-                                f"   • 📊 Hacim: {format_number(vol['today'])} | "
-                                f"3G: {format_number(vol['vol3'])} | "
-                                f"5G: {format_number(vol['vol5'])} | "
-                                f"Trend: %{vol['trend']:.2f} ({vol['trend_text']})\n"
-                              )
+                            lines.append("📊 <b>Hacim Analizi</b>")
+                            lines.append(f"   • 1G: {format_number(vol['today'])}")
+                            lines.append(f"   • 3G: {format_number(vol['vol3'])}")
+                            lines.append(f"   • 5G: {format_number(vol['vol5'])}")
+                            lines.append(f"   • Trend: %{vol['trend']:.2f} ({vol['trend_text']})\n")
                         else:
                             lines.append("   • 📊 Hacim: veri yok\n")
-
 
                     genel_kz = genel_deger - genel_maliyet
                     genel_yuzde = (genel_kz / genel_maliyet * 100) if genel_maliyet > 0 else 0
@@ -1235,7 +1224,6 @@ def main():
                     send_message(chat_id, "\n".join(lines))
                     continue
 
-
                 # -------- SİL --------
                 elif cmd == "sil" and len(parts) >= 3:
                     sym = parts[2].upper()
@@ -1250,17 +1238,14 @@ def main():
                         send_message(chat_id, f"⚠️ Portföyde {sym} yok.")
                     continue
 
-
                 else:
                     send_message(chat_id,
                         "📦 Kullanım:\n"
                         "<code>/portföy</code> ekle ASELS 100(LOT Adedi) 54.8(Maliyet). Şeklinde giriniz.\n"
                         "<code>/portföy</code> sil ASELS\n"
                         "<code>/portföy</code> göster\n"
-                        
                     )
                     continue
-
 
             # ========================= HİSSE SORGUSU =========================
             symbol = text.split()[0].lstrip("/").upper()
@@ -1272,7 +1257,6 @@ def main():
             reply = build_message(symbol)
             send_message(chat_id, reply)
             time.sleep(0.8)
-
 
         time.sleep(0.5)
 
