@@ -1093,52 +1093,55 @@ def main():
 
                     send_message(chat_id, f"📦 <b>{sym}</b> güncellendi.\nLot: <b>{yeni_adet:.0f}</b>\nMaliyet: <b>{yeni_maliyet:.2f} TL</b>")
                     continue
-                # -------- LİSTE / GÖSTER --------
-                elif cmd in ["liste", "goster", "göster"]:
-                    user_p = portföy.get(uid_key, {})
+# -------- EKLE --------
+if cmd == "ekle" and len(parts) >= 5:
+    ...
+    continue
 
-                    if not user_p:
-                        send_message(
-                            chat_id,
-                            "📦 Portföy boş. Örnek:\n<code>/portföy</code> ekle ASELS 100 54.8"
-                        )
-                        continue
+# -------- LİSTE / GÖSTER --------
+elif cmd in ["liste", "goster", "göster"]:
+    user_p = portföy.get(uid_key, {})
 
-                    lines = ["📦 <b>Portföyün:</b>\n"]
+    if not user_p:
+        send_message(
+            chat_id,
+            "📦 Portföy boş. Örnek:\n<code>/portföy</code> ekle ASELS 100 54.8"
+        )
+        continue
 
-                    genel_maliyet = 0
-                    genel_deger = 0
-                    kz_list = []
+    lines = ["📦 <b>Portföyün:</b>\n"]
 
-                    for sym, pos in user_p.items():
-                        adet = pos["adet"]
-                        maliyet = pos["maliyet"]
-                        toplam = adet * maliyet
+    genel_maliyet = 0
+    genel_deger = 0
+    kz_list = []
 
-                        info = get_price(sym)
-                        fiyat = info["fiyat"] if info else None
+    for sym, pos in user_p.items():
+        adet = pos["adet"]
+        maliyet = pos["maliyet"]
+        toplam = adet * maliyet
 
-                        if fiyat:
-                            anlik = fiyat * adet
-                            kz = anlik - toplam
-                            genel_maliyet += toplam
-                            genel_deger += anlik
-                            kz_list.append((sym, kz))
+        info = get_price(sym)
+        fiyat = info["fiyat"] if info else None
 
-                            yuzde = (kz / toplam) * 100 if toplam > 0 else 0
-                            kz_emoji = "🟢" if kz >= 0 else "🔴"
+        if fiyat:
+            anlik = fiyat * adet
+            kz = anlik - toplam
+            genel_maliyet += toplam
+            genel_deger += anlik
+            kz_list.append((sym, kz))
 
-                            lines.append(
-                                f"📌 <b>{sym}</b>\n"
-                                f"   • Lot: <b>{adet:.0f}</b>\n"
-                                f"   • Maliyet: <b>{maliyet:.2f} TL</b>\n"
-                                f"   • Anlık: <b>{format_price(fiyat)} TL</b>\n"
-                                f"   • Değer: <b>{format_price(anlik)} TL</b>\n"
-                                f"   • {kz_emoji} K/Z: <b>{kz:.2f} TL (%{yuzde:.2f})</b>\n"
-                            )
+            yuzde = (kz / toplam) * 100 if toplam > 0 else 0
+            kz_emoji = "🟢" if kz >= 0 else "🔴"
 
+            lines.append(
+                f"📌 <b>{sym}</b>\n"
+                f"   • Lot: <b>{adet:.0f}</b>\n"
+                f"   • Maliyet: <b>{maliyet:.2f} TL</b>\n"
+                f"   • Anlık: <b>{format_price(fiyat)} TL</b>\n"
+                f"   • Değer: <b>{format_price(anlik)} TL</b>\n"
+                f"   • {kz_emoji} K/Z: <b>{kz:.2f} TL (%{yuzde:.2f})</b>\n"
+            )
 
-            # ================= HACİM ANALİZİ (YENİ EKLENDİ) =================
             vol = get_volume_analysis(sym)
             if vol:
                 lines.append(
@@ -1164,22 +1167,22 @@ def main():
     lines.append(f"📊 Portföy Değeri: {format_price(genel_deger)} TL")
     lines.append(f"{gemoji} Genel K/Z: {genel_kz:.2f} TL (%{genel_yuzde:.2f})")
 
+    # ---------------- AI PORTFÖY YORUMU ----------------
+    ai_prompt = (
+        "Aşağıdaki verileri kullanarak Borsa İstanbul portföyü için çok kısa, net ve "
+        "yalnızca analitik bir değerlendirme yap. Profesyonel bir ton kullan, "
+        "Metin 8-10 kısa cümleden oluşsun, sade ve anlaşılır olsun.\n\n"
+        f"Toplam maliyet: {genel_maliyet:.2f} TL\n"
+        f"Güncel değer: {genel_deger:.2f} TL\n"
+        f"Kar/Zarar: {genel_kz:.2f} TL (%{genel_yuzde:.2f})\n\n"
+        "Yorum formatı:\n"
+        "📌 Genel Durum\n"
+        "⚠️ Risk Görünümü\n"
+        "💠 Portföy Yapısı\n"
+        "📝 Sonuç"
+    )
 
 
-                    # ---------------- AI PORTFÖY YORUMU (PROFESYONEL) ----------------
-                    ai_prompt = (
-                        "Aşağıdaki verileri kullanarak Borsa İstanbul portföyü için çok kısa, net ve "
-                        "yalnızca analitik bir değerlendirme yap. Profesyonel bir ton kullan, "
-                        "Metin 8-10 kısa cümleden oluşsun, sade ve anlaşılır olsun.\n\n"
-                        f"Toplam maliyet: {genel_maliyet:.2f} TL\n"
-                        f"Güncel değer: {genel_deger:.2f} TL\n"
-                        f"Kar/Zarar: {genel_kz:.2f} TL (%{genel_yuzde:.2f})\n\n"
-                        "Yorum formatı:\n"
-                        "📌 Genel Durum\n"
-                        "⚠️ Risk Görünümü\n"
-                        "💠 Portföy Yapısı\n"
-                        "📝 Sonuç"
-                    )
 
                     try:
                         r = requests.post(
