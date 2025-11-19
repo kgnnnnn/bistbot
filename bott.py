@@ -1516,5 +1516,7 @@ def run():
 
 Thread(target=run).start()
 
+print(build_daily_summary())
+
 if __name__ == "__main__":
     main()
