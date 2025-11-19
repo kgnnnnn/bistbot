@@ -1472,7 +1472,6 @@ def main():
         time.sleep(0.5)
 
 
-
 # =============== FLASK (Render Portu) ===============
 from flask import Flask, request
 
@@ -1516,11 +1515,5 @@ def run():
 
 Thread(target=run).start()
 
-# ⬇️ TEST SATIRINI BURAYA KOY (KESİNLİKLE main()'den ÖNCE OLMALI)
-print("=== TEST RAPORU BAŞLIYOR ===")
-print(build_daily_summary())
-print("=== TEST RAPORU BİTTİ ===")
-
 if __name__ == "__main__":
     main()
-
