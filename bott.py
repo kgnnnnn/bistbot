@@ -1143,16 +1143,16 @@ def main():
                             lines.append(f"📌 <b>{sym}</b> — ❌ Fiyat alınamadı\n")
 
                             # --- Hacim Analizi ---
-                            vol = get_volume_analysis(sym)
-                            if vol:
-                                lines.append(
-                                    f"   • 📊 Hacim: {format_number(vol['today'])} | "
-                                    f"3G: {format_number(vol['vol3'])} | "
-                                    f"5G: {format_number(vol['vol5'])} | "
-                                    f"Trend: %{vol['trend']:.2f} ({vol['trend_text']})\n"
-                                )
-                            else:
-                                lines.append("   • 📊 Hacim: veri yok\n")
+                        vol = get_volume_analysis(sym)
+                        if vol:
+                            lines.append(
+                                f"   • 📊 Hacim: {format_number(vol['today'])} | "
+                                f"3G: {format_number(vol['vol3'])} | "
+                                f"5G: {format_number(vol['vol5'])} | "
+                                f"Trend: %{vol['trend']:.2f} ({vol['trend_text']})\n"
+                              )
+                        else:
+                            lines.append("   • 📊 Hacim: veri yok\n")
 
 
                     genel_kz = genel_deger - genel_maliyet
