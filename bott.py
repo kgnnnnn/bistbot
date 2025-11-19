@@ -517,6 +517,8 @@ def build_message(symbol):
         lines.append(f"📌 3G Ortalama: {format_number(vol['vol3'])}")
         lines.append(f"📌 5G Ortalama: {format_number(vol['vol5'])}")
         lines.append(f"📌 1 Ay Trend: %{vol['trend']:.2f} ({vol['trend_text']})")
+        lines.append("")
+
 
         # AI hacim yorumu
         ai_prompt2 = (
@@ -539,7 +541,7 @@ def build_message(symbol):
         except:
             ai_text2 = "⚠️ AI yorum alınamadı."
 
-        lines.append(f"📌 <b>Kriptos AI:</b> {ai_text2}")
+        lines.append(f"🤖 <b>Kriptos AI Volatilite Değerlendirmesi:</b> {ai_text2}")
 
     # --- Bilanço Özeti ---
     fin = get_balance_summary(symbol)
