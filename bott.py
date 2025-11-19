@@ -1133,14 +1133,36 @@ def main():
                         else:
                             lines.append(f"📌 <b>{sym}</b> — ❌ Fiyat alınamadı")
 
-                        # --- Hacim Analizi (her hisse için) ---
+                        # --- Hacim Analizi + Kriptos AI Volatilite Yorumu ---
                         vol = get_volume_analysis(sym)
                         if vol:
                             lines.append("📊 <b>Hacim Analizi</b>")
                             lines.append(f"   • 1G: {format_number(vol['today'])}")
                             lines.append(f"   • 3G: {format_number(vol['vol3'])}")
                             lines.append(f"   • 5G: {format_number(vol['vol5'])}")
-                            lines.append(f"   • Trend: %{vol['trend']:.2f} ({vol['trend_text']})\n")
+                            lines.append(f"   • Trend: %{vol['trend']:.2f} ({vol['trend_text']})")
+
+                            ai_prompt_vol = (
+                                f"Günlük hacim {vol['today']}, 3 günlük ortalama {vol['vol3']}, "
+                                f"5 günlük ortalama {vol['vol5']}, aylık trend %{vol['trend']:.2f}. "
+                                "Bu verileri kısa ve profesyonel şekilde yorumla. Yatırım tavsiyesi verme."
+                            )
+
+                            try:
+                                r_vol = requests.post(
+                                    "https://api.openai.com/v1/chat/completions",
+                                    headers={"Authorization": "Bearer " + os.getenv("OPENAI_API_KEY")},
+                                    json={
+                                        "model": "gpt-4o-mini",
+                                        "messages": [{"role": "user", "content": ai_prompt_vol}],
+                                        "max_tokens": 500,
+                                    }
+                                )
+                                ai_vol_text = r_vol.json()["choices"][0]["message"]["content"]
+                            except:
+                                ai_vol_text = "⚠️ AI hacim yorumu alınamadı."
+
+                            lines.append(f"   • 🤖 <b>Kriptos AI Volatilite Yorumu:</b> {ai_vol_text}\n")
                         else:
                             lines.append("   • 📊 Hacim: veri yok\n")
 
@@ -1259,6 +1281,7 @@ def main():
             time.sleep(0.8)
 
         time.sleep(0.5)
+
 
 
 # =============== FLASK (Render Portu) ===============
