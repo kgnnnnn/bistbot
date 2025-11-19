@@ -1140,7 +1140,7 @@ def main():
                             lines.append(f"   • 1G: {format_number(vol['today'])}")
                             lines.append(f"   • 3G: {format_number(vol['vol3'])}")
                             lines.append(f"   • 5G: {format_number(vol['vol5'])}")
-                            lines.append(f"   • Trend: %{vol['trend']:.2f} ({vol['trend_text']})")
+                            lines.append(f"   • Trend: %{vol['trend']:.2f} ({vol['trend_text']})\n\n")
 
                             ai_prompt_vol = (
                                 f"Günlük hacim {vol['today']}, 3 günlük ortalama {vol['vol3']}, "
@@ -1161,8 +1161,8 @@ def main():
                                 ai_vol_text = r_vol.json()["choices"][0]["message"]["content"]
                             except:
                                 ai_vol_text = "⚠️ AI hacim yorumu alınamadı."
-
-                            lines.append(f"   • 🤖 <b>Kriptos AI Volatilite Yorumu:</b> {ai_vol_text}\n")
+                                
+                            lines.append(f"🤖 <b>Kriptos AI Volatilite Yorumu:</b> {ai_vol_text}\n")
                         else:
                             lines.append("   • 📊 Hacim: veri yok\n")
 
