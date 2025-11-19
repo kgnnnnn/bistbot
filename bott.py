@@ -1134,6 +1134,7 @@ def main():
                             lines.append(f"📌 <b>{sym}</b> — ❌ Fiyat alınamadı")
 
                         # --- Hacim Analizi + Kriptos AI Volatilite Yorumu ---
+                        lines.append("——————————————")
                         vol = get_volume_analysis(sym)
                         if vol:
                             lines.append("📊 <b>Hacim Analizi</b>")
