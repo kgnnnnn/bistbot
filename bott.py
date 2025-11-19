@@ -1509,14 +1509,18 @@ def broadcast_route():
         return f"HATA: {e}", 500
 
 
+# =============== FLASK THREAD ===============
 def run():
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
 
-
 Thread(target=run).start()
 
+# ⬇️ TEST SATIRINI BURAYA KOY (KESİNLİKLE main()'den ÖNCE OLMALI)
+print("=== TEST RAPORU BAŞLIYOR ===")
 print(build_daily_summary())
+print("=== TEST RAPORU BİTTİ ===")
 
 if __name__ == "__main__":
     main()
+
