@@ -353,37 +353,6 @@ def get_price(symbol):
             "borsa_acik": None,
         }
 
-# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-# BURANIN HEMEN ALTINA HACİM ANALİZİ FONKSİYONUNU EKLE
-# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-
-def get_volume_analysis(symbol):
-    try:
-        sym = symbol.upper() + ".IS"
-        h = yf.Ticker(sym).history(period="1mo")
-
-        if h is None or len(h) == 0:
-            return None
-
-        vol_today = h["Volume"].iloc[-1]
-        vol_3g = h["Volume"].iloc[-3:].mean()
-        vol_5g = h["Volume"].iloc[-5:].mean()
-
-        trend = ((vol_today - vol_5g) / vol_5g) * 100 if vol_5g > 0 else 0
-        money_flow = "Para Girişi" if vol_today >= vol_5g else "Para Çıkışı"
-
-        return {
-            "today": int(vol_today),
-            "avg3": int(vol_3g),
-            "avg5": int(vol_5g),
-            "month_trend": round(trend, 2),
-            "trend_dir": "Yükseliş" if trend >= 0 else "Düşüş",
-            "flow_score": min(max(int((vol_today / (vol_5g + 1)) * 10), 0), 100),
-            "change": round(((vol_today - vol_5g) / (vol_5g + 1)) * 100, 2)
-        }
-
-    except Exception:
-        return None
 
 # =============== BIST100 TUM LISTE (BURAYA EKLENECEK) ===============
 BIST100_TICKERS = [
@@ -472,7 +441,7 @@ def get_balance_summary(symbol):
     return {"summary": "🤖 <b>Bilanço Özeti</b>\n<b>Kriptos AI:</b> Çok yakında"}
 
 
-# ------------------------MESAJ OLUŞTURMA------------------------- #
+# -------------------------MESAJ OLUŞTURMA------------------------- #
 def build_message(symbol):
     symbol = symbol.strip().upper()
     info = get_price(symbol)
@@ -503,17 +472,6 @@ def build_message(symbol):
         lines.append(f"🔄 EMA(50/200): {ema_sig}")
         lines.append(f"🤖 <b>Kriptos AI:</b> {overall}")
 
-    # --- Hacim Analizi ---
-    vol = get_volume_analysis(symbol)
-    if vol:
-        lines.append("\n📊 <b>Hacim Analizi</b>")
-        lines.append(f"📌 Günlük Hacim: {format_number(vol['today'])}")
-        lines.append(f"📌 3G Ortalama: {format_number(vol['avg3'])}")
-        lines.append(f"📌 5G Ortalama: {format_number(vol['avg5'])}")
-        lines.append(f"📌 1 Ay Trend: %{vol['month_trend']} ({vol['trend_dir']})")
-        lines.append(f"📌 Para Akışı Skoru: {vol['flow_score']}/100")
-
-
     # --- Bilanço Özeti ---
     fin = get_balance_summary(symbol)
     if fin and fin.get("summary"):
@@ -530,10 +488,10 @@ def build_message(symbol):
     return "\n".join(lines)
 
 
+# --------------- FAVORİ ÖZETİ (TEKRAR KULLANILABİLİR) ---------------
 def build_favorite_line(sym):
     info = get_price(sym)
     tech = get_tv_analysis(sym)
-    vol = get_volume_analysis(sym)  # <-- HACİM ANALİZİ EKLENDİ
 
     if not info:
         return f"• {sym}: veri yok"
@@ -543,27 +501,13 @@ def build_favorite_line(sym):
     rsi_label = map_rsi_label(rsi_val) if rsi_val is not None else "N/A"
     ema_sig = map_ema_signal(tech.get("ema50"), tech.get("ema200")) if tech else "N/A"
 
-    # --- Hacim Mini-Özet ---
-    if vol:
-        vol_txt = (
-            f"Hacim: G:{format_number(vol['today'])} | "
-            f"3G:{format_number(vol['avg3'])} | "
-            f"5G:{format_number(vol['avg5'])} | "
-            f"Trend:%{vol['month_trend']} {vol['trend_dir']} | "
-            f"Skor:{vol['flow_score']}/100"
-        )
-    else:
-        vol_txt = "Hacim: veri yok"
-
     return (
-        f"• <b>{sym}</b> — {fiyat_txt} TL\n"
-        f"   RSI: {rsi_label} | EMA(50/200): {ema_sig}\n"
-        f"   📊 {vol_txt}"
+        f"• <b>{sym}</b> — {fiyat_txt} TL | "
+        f"RSI: {rsi_label} | EMA(50/200): {ema_sig}"
     )
 
 
-
-# ============== OTOMATİK FAVORİ GÖNDERİCİ ===============
+# =============== OTOMATİK FAVORİ GÖNDERİCİ ===============
 _last_sent_marker = {"morning": None, "evening": None}
 
 
@@ -677,44 +621,18 @@ def build_daily_summary():
     ai_text = generate_daily_ai_comment(bist_change)
 
     msg = (
-        "📊 <b>Günlük Borsa Özeti</b>\n"
+        "📊 <b>Günlük 09:00 Borsa Özeti</b>\n"
         "───────\n\n"
         f"📈 <b>BIST100:</b> {bist_price:.2f} (%{bist_change:.2f})\n\n"
         "🟢 <b>En Çok Artan 5 Hisse</b>\n"
     )
 
-    # ==================== TOP GAINERS ====================
     for s, p, c in gainers:
-        sym = s.replace(".IS", "")
-        msg += f"• {sym}: {p:.2f} (%{c:.2f})\n"
+        msg += f"• {s.replace('.IS','')}: {p:.2f} (%{c:.2f})\n"
 
-        vol = get_volume_analysis(sym)
-        if vol:
-            msg += (
-                f"   📊 Hacim: G:{format_number(vol['today'])} | "
-                f"5G:{format_number(vol['avg5'])} | "
-                f"Trend:%{vol['month_trend']} {vol['trend_dir']} | "
-                f"Skor:{vol['flow_score']}/100\n"
-            )
-        else:
-            msg += "   📊 Hacim: veri yok\n"
-
-    # ==================== TOP LOSERS ====================
     msg += "\n🔴 <b>En Çok Düşen 5 Hisse</b>\n"
     for s, p, c in losers:
-        sym = s.replace(".IS", "")
-        msg += f"• {sym}: {p:.2f} (%{c:.2f})\n"
-
-        vol = get_volume_analysis(sym)
-        if vol:
-            msg += (
-                f"   📊 Hacim: G:{format_number(vol['today'])} | "
-                f"5G:{format_number(vol['avg5'])} | "
-                f"Trend:%{vol['month_trend']} {vol['trend_dir']} | "
-                f"Skor:{vol['flow_score']}/100\n"
-            )
-        else:
-            msg += "   📊 Hacim: veri yok\n"
+        msg += f"• {s.replace('.IS','')}: {p:.2f} (%{c:.2f})\n"
 
     msg += (
         "\n🤖 <b>Kriptos AI Yorumu</b>\n\n"
@@ -723,36 +641,21 @@ def build_daily_summary():
 
     return msg
 
-_last_daily_send = ""
 
+_last_daily_send = None
 def daily_report_loop():
     global _last_daily_send
     while True:
         try:
             now = now_istanbul()
-
-            # === 09:00 Sabah Raporu ===
             if now.strftime("%H:%M") == "09:00":
                 if _last_daily_send != now.strftime("%Y-%m-%d"):
                     _last_daily_send = now.strftime("%Y-%m-%d")
                     report = build_daily_summary()
 
+                    # Raporu göndereceğimiz kullanıcılar (HERKES)
                     targets = set()
-                    users = load_users()
-                    for uid in users:
-                        targets.add(uid)
 
-                    for uid in targets:
-                        send_message(uid, report)
-                        time.sleep(0.5)
-
-            # === 18:10 Akşam Raporu ===
-            if now.strftime("%H:%M") == "18:10":
-                if _last_daily_send != now.strftime("%Y-%m-%d-18"):
-                    _last_daily_send = now.strftime("%Y-%m-%d-18")
-                    report = build_daily_summary()
-
-                    targets = set()
                     users = load_users()
                     for uid in users:
                         targets.add(uid)
@@ -1094,13 +997,13 @@ def main():
                     send_message(chat_id, f"📦 <b>{sym}</b> güncellendi.\nLot: <b>{yeni_adet:.0f}</b>\nMaliyet: <b>{yeni_maliyet:.2f} TL</b>")
                     continue
 
+
                 # -------- LİSTE / GÖSTER --------
                 elif cmd in ["liste", "goster", "göster"]:
                     user_p = portföy.get(uid_key, {})
 
                     if not user_p:
-                        send_message(
-                            chat_id,
+                        send_message(chat_id,
                             "📦 Portföy boş. Örnek:\n<code>/portföy</code> ekle ASELS 100 54.8"
                         )
                         continue
@@ -1137,23 +1040,9 @@ def main():
                                 f"   • Değer: <b>{format_price(anlik)} TL</b>\n"
                                 f"   • {kz_emoji} K/Z: <b>{kz:.2f} TL (%{yuzde:.2f})</b>\n"
                             )
-
-                            vol = get_volume_analysis(sym)
-                            if vol:
-                                lines.append(
-                                    f"   📊 Hacim: G:{format_number(vol['today'])} | "
-                                    f"3G:{format_number(vol['avg3'])} | "
-                                    f"5G:{format_number(vol['avg5'])} | "
-                                    f"Trend:%{vol['month_trend']} {vol['trend_dir']} | "
-                                    f"Skor:{vol['flow_score']}/100\n"
-                                )
-                            else:
-                                lines.append("   📊 Hacim: veri yok\n")
-
                         else:
                             lines.append(f"📌 <b>{sym}</b> — ❌ Fiyat alınamadı\n")
 
-                    # ========= GENEL TOPLAM =========
                     genel_kz = genel_deger - genel_maliyet
                     genel_yuzde = (genel_kz / genel_maliyet * 100) if genel_maliyet > 0 else 0
                     gemoji = "🟢" if genel_kz >= 0 else "🔴"
@@ -1163,7 +1052,7 @@ def main():
                     lines.append(f"📊 Portföy Değeri: {format_price(genel_deger)} TL")
                     lines.append(f"{gemoji} Genel K/Z: {genel_kz:.2f} TL (%{genel_yuzde:.2f})")
 
-                    # ---------------- AI PORTFÖY YORUMU ----------------
+                    # ---------------- AI PORTFÖY YORUMU (PROFESYONEL) ----------------
                     ai_prompt = (
                         "Aşağıdaki verileri kullanarak Borsa İstanbul portföyü için çok kısa, net ve "
                         "yalnızca analitik bir değerlendirme yap. Profesyonel bir ton kullan, "
@@ -1216,15 +1105,9 @@ def main():
                             plt.ylabel("TL")
 
                             for bar, val in zip(bars, values):
-                                plt.text(
-                                    bar.get_x() + bar.get_width()/2,
-                                    bar.get_height(),
-                                    f"{val:.0f}",
-                                    ha="center",
-                                    va="bottom",
-                                    fontsize=9,
-                                    fontweight="bold"
-                                )
+                                plt.text(bar.get_x() + bar.get_width()/2, bar.get_height(),
+                                         f"{val:.0f}", ha="center", va="bottom",
+                                         fontsize=9, fontweight="bold")
 
                             plt.tight_layout()
 
@@ -1240,6 +1123,7 @@ def main():
                     send_message(chat_id, "\n".join(lines))
                     continue
 
+
                 # -------- SİL --------
                 elif cmd == "sil" and len(parts) >= 3:
                     sym = parts[2].upper()
@@ -1254,14 +1138,14 @@ def main():
                         send_message(chat_id, f"⚠️ Portföyde {sym} yok.")
                     continue
 
-                # -------- HATALI KULLANIM --------
+
                 else:
-                    send_message(
-                        chat_id,
+                    send_message(chat_id,
                         "📦 Kullanım:\n"
-                        "<code>/portföy</code> ekle ASELS 100(LOT Adedi) 54.8(Maliyet)\n"
+                        "<code>/portföy</code> ekle ASELS 100(LOT Adedi) 54.8(Maliyet). Şeklinde giriniz.\n"
                         "<code>/portföy</code> sil ASELS\n"
-                        "<code>/portföy</code> göster"
+                        "<code>/portföy</code> göster\n"
+                        
                     )
                     continue
 
@@ -1276,6 +1160,9 @@ def main():
             reply = build_message(symbol)
             send_message(chat_id, reply)
             time.sleep(0.8)
+
+
+        time.sleep(0.5)
 
 
 # =============== FLASK (Render Portu) ===============
