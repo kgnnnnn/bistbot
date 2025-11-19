@@ -373,6 +373,172 @@ BIST100_TICKERS = [
     "VESTL.IS","YKBNK.IS","ZOREN.IS"
 ]
 
+# =============== BIST100 SEKTÖR GRUPLARI (FULL – 2025) ===============
+BIST_SECTORS = {
+
+    # ---------------- BANKACILIK ----------------
+    "Bankacılık": [
+        "AKBNK.IS", "ALBRK.IS", "GARAN.IS", "HALKB.IS",
+        "ICBCT.IS", "ISCTR.IS", "SKBNK.IS", "TSKB.IS",
+        "VAKBN.IS", "YKBNK.IS"
+    ],
+
+    # ---------------- SİGORTA ----------------
+    "Sigorta": [
+        "TURSG.IS"
+    ],
+
+    # ---------------- HOLDİNG & YATIRIM ----------------
+    "Holding – Yatırım": [
+        "SAHOL.IS", "DOHOL.IS", "KCHOL.IS",
+        "AGHOL.IS", "GENTS.IS", "IEYHO.IS",
+        "ECZYT.IS", "QUAGR.IS"
+    ],
+
+    # ---------------- HAVACILIK – ULAŞTIRMA ----------------
+    "Havacılık – Ulaştırma": [
+        "THYAO.IS", "PGSUS.IS", "TAVHL.IS"
+    ],
+
+    # ---------------- PERAKENDE – TÜKETİM ----------------
+    "Perakende – Tüketim": [
+        "BIMAS.IS", "MGROS.IS", "SOKM.IS",
+        "ULKER.IS", "MAVI.IS"
+    ],
+
+    # ---------------- TEKNOLOJİ – TELEKOM – SAVUNMA ----------------
+    "Teknoloji – Telekom – Savunma": [
+        "LOGO.IS", "ASELS.IS", "TCELL.IS",
+        "TTKOM.IS", "VESTL.IS", "SMART.IS",
+        "SMRTG.IS", "ASTOR.IS"
+    ],
+
+    # ---------------- KİMYA – PETROKİMYA – GÜBRE ----------------
+    "Kimya – Petro – Gübre": [
+        "HEKTS.IS", "PETKM.IS", "SASA.IS",
+        "GUBRF.IS", "KMPUR.IS", "EGEEN.IS"
+    ],
+
+    # ---------------- ENERJİ ----------------
+    "Enerji": [
+        "AKSEN.IS", "ENJSA.IS", "GWIND.IS",
+        "ZOREN.IS", "ODAS.IS"
+    ],
+
+    # ---------------- SANAYİ – ÜRETİM – OTOMOTİV ----------------
+    "Sanayi – Üretim – Otomotiv": [
+        "EREGL.IS", "ISDMR.IS", "KRDMD.IS",     # Demir-çelik
+        "ARCLK.IS", "SISE.IS",                 # Beyaz eşya – cam
+        "FROTO.IS", "TOASO.IS", "TTRAK.IS",    # Otomotiv
+        "OTKAR.IS", "ASUZU.IS",
+        "CEMTS.IS", "BAGFS.IS", "HKTM.IS",
+        "PARSN.IS", "KONTR.IS", "MGROS.IS"
+    ],
+
+    # ---------------- MADENCİLİK – METAL ----------------
+    "Madencilik – Metal": [
+        "KOZAA.IS", "KOZAL.IS", "BRSAN.IS",
+        "GWIND.IS", "QUAGR.IS"
+    ],
+
+    # ---------------- GYO – İNŞAAT – GAYRİMENKUL ----------------
+    "GYO – Gayrimenkul": [
+        "KGYO.IS", "ISGYO.IS", "ENKAI.IS",
+        "KZBGY.IS", "PSGYO.IS", "AKFGY.IS",
+        "ALKA.IS"
+    ],
+
+    # ---------------- TARIM – GIDA ÜRETİM ----------------
+    "Tarım – Gıda Üretim": [
+        "EKSUN.IS", "BERA.IS", "ULKER.IS",
+        "ASUZU.IS", "HKTM.IS"
+    ],
+
+    # ---------------- HİZMET – TURİZM – SPOR ----------------
+    "Hizmet – Turizm – Spor": [
+        "FENER.IS", "DOAS.IS", "COSMO.IS"
+    ]
+}
+
+# =============== SEKTÖR PERFORMANS HESAPLAMA ===============
+def get_sector_performance():
+    """
+    Her sektör için son kapanış ile bir önceki kapanış arasında % değişim hesaplar.
+    Sektör içindeki tüm hisselerin ortalama değişimini döndürür.
+    """
+    results = {}
+
+    for sector, symbols in BIST_SECTORS.items():
+        changes = []
+
+        for sym in symbols:
+            try:
+                h = yf.Ticker(sym).history(period="2d")
+                if len(h) < 2:
+                    continue
+
+                prev = h["Close"].iloc[-2]
+                last = h["Close"].iloc[-1]
+
+                if prev > 0:
+                    pct = (last - prev) / prev * 100
+                    changes.append(pct)
+
+            except Exception:
+                continue
+
+        if changes:
+            results[sector] = sum(changes) / len(changes)
+
+    return results
+
+# =============== SEKTÖR ANALİZİ (Kriptos AI) ===============
+def generate_sector_ai_comment(sector_data):
+    """
+    BIST sektör performanslarını alır ve Kriptos AI ile profesyonel yorum üretir.
+    """
+    try:
+        if not sector_data:
+            return "🤖 <b>Kriptos AI Sektör Analizi</b>\n⚠️ Sektör verisi bulunamadı."
+
+        # Tabloyu metne çevir
+        table = ""
+        for sector, change in sector_data.items():
+            table += f"- {sector}: %{change:.2f}\n"
+
+        prompt = f"""
+Aşağıdaki sektör performanslarını profesyonel ve kısa bir Türkçe piyasa analizi şeklinde yorumla.
+Yatırım tavsiyesi verme.
+Yanıtı mutlaka şu başlıkla başlat: 🤖 <b>Kriptos AI Sektör Analizi</b>
+
+Sektör değişimleri (günlük):
+{table}
+
+Format:
+• En güçlü sektörler
+• Para giriş–çıkışlarının yorumlanması
+• Zayıflayan sektörler
+• Genel piyasa yorumu
+"""
+
+        r = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": "Bearer " + os.getenv("OPENAI_API_KEY")},
+            json={
+                "model": "gpt-4o-mini",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 400,
+            }
+        )
+
+        return r.json()["choices"][0]["message"]["content"]
+
+    except Exception as e:
+        print("Sektör AI hata:", e)
+        return "🤖 <b>Kriptos AI Sektör Analizi</b>\n⚠️ Yorum alınamadı."
+
+
+
 # =============== TRADINGVIEW (RSI, EMA50/EMA200) ===============
 TV_URL = "https://tradingview-real-time.p.rapidapi.com/technicals/summary"
 TV_HEADERS = {
@@ -705,15 +871,24 @@ Format:
 
 
 def build_daily_summary():
+    # --- BIST100 genel durum ---
     bist_price, bist_change = get_bist100_summary()
     gainers, losers = get_top_movers()
 
+    # --- Sektör performanslarını hesapla ---
+    sector_perf = get_sector_performance()
+
+    # --- Kriptos AI sektör analizi ---
+    sector_ai_comment = generate_sector_ai_comment(sector_perf)
+
+    # --- Günlük AI BIST yorumu ---
     ai_text = generate_daily_ai_comment(bist_change)
 
     msg = (
-        "📊 <b>Günlük 09:00 Borsa Özeti</b>\n"
+        "📊 <b>Günlük Borsa Özeti</b>\n"
         "───────\n\n"
         f"📈 <b>BIST100:</b> {bist_price:.2f} (%{bist_change:.2f})\n\n"
+
         "🟢 <b>En Çok Artan 5 Hisse</b>\n"
     )
 
@@ -724,8 +899,21 @@ def build_daily_summary():
     for s, p, c in losers:
         msg += f"• {s.replace('.IS','')}: {p:.2f} (%{c:.2f})\n"
 
+    # --- Sektör Performans Tablosu ---
+    msg += "\n🤖 <b>Sektör Performansları</b>\n"
+    if sector_perf:
+        for sec, ch in sector_perf.items():
+            emoji = "🟢" if ch >= 0 else "🔴"
+            msg += f"{emoji} {sec}: %{ch:.2f}\n"
+    else:
+        msg += "⚠️ Sektör verisi alınamadı.\n"
+
+    # --- AI Sektör Analizi ---
+    msg += f"\n{sector_ai_comment}\n"
+
+    # --- Günlük AI piyasa özeti ---
     msg += (
-        "\n🤖 <b>Kriptos AI Yorumu</b>\n\n"
+        "\n🤖 <b>Kriptos AI Günlük Piyasa Yorumu</b>\n"
         f"{ai_text}"
     )
 
