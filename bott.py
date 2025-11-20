@@ -549,10 +549,10 @@ Sektör değişimleri (günlük):
 {table}
 
 Format:
-• En güçlü sektörler
-• Para giriş–çıkışlarının yorumlanması
-• Zayıflayan sektörler
-• Genel piyasa yorumu
+📌En güçlü sektörler
+📌Para giriş–çıkışlarının yorumlanması
+📌Zayıflayan sektörler
+📌Genel piyasa yorumu
 """
 
         r = requests.post(
