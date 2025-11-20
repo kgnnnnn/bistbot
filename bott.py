@@ -1117,7 +1117,9 @@ def main():
                 for uid in users:
                     son = stats.get(uid, {}).get("son_aktif")
                     if son:
-                        dt = datetime.strptime(son, "%Y-%m-%d %H:%M:%S")
+                        dt = datetime.strptime(son, "%Y-%m-%d %H:%M:%S").replace(
+                            tzinfo=timezone(timedelta(hours=IST_UTC_OFFSET_HOURS))
+                        )
                         fark = now - dt
                         if fark.days <= 3:
                             aktif.append(f"{uid} — Son Aktif: {son}")
