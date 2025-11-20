@@ -373,14 +373,13 @@ BIST100_TICKERS = [
     "VESTL.IS","YKBNK.IS","ZOREN.IS"
 ]
 
-# =============== BIST100 SEKTÖR GRUPLARI (FULL – 2025) ===============
 BIST_SECTORS = {
 
     # ---------------- BANKACILIK ----------------
     "Bankacılık": [
-        "AKBNK.IS", "ALBRK.IS", "GARAN.IS", "HALKB.IS",
-        "ICBCT.IS", "ISCTR.IS", "SKBNK.IS", "TSKB.IS",
-        "VAKBN.IS", "YKBNK.IS"
+        "AKBNK.IS","ALBRK.IS","GARAN.IS","HALKB.IS",
+        "ICBCT.IS","ISCTR.IS","SKBNK.IS",
+        "TSKB.IS","VAKBN.IS","YKBNK.IS"
     ],
 
     # ---------------- SİGORTA ----------------
@@ -388,75 +387,87 @@ BIST_SECTORS = {
         "TURSG.IS"
     ],
 
-    # ---------------- HOLDİNG & YATIRIM ----------------
+    # ---------------- HOLDİNG – YATIRIM ----------------
     "Holding – Yatırım": [
-        "SAHOL.IS", "DOHOL.IS", "KCHOL.IS",
-        "AGHOL.IS", "GENTS.IS", "IEYHO.IS",
-        "ECZYT.IS", "QUAGR.IS"
+        "SAHOL.IS","DOHOL.IS","KCHOL.IS",
+        "AGHOL.IS","GENTS.IS",
+        "IEYHO.IS","ECZYT.IS","BRYAT.IS","EGGUB.IS"
     ],
 
     # ---------------- HAVACILIK – ULAŞTIRMA ----------------
     "Havacılık – Ulaştırma": [
-        "THYAO.IS", "PGSUS.IS", "TAVHL.IS"
+        "THYAO.IS","PGSUS.IS","TAVHL.IS"
     ],
 
     # ---------------- PERAKENDE – TÜKETİM ----------------
     "Perakende – Tüketim": [
-        "BIMAS.IS", "MGROS.IS", "SOKM.IS",
-        "ULKER.IS", "MAVI.IS"
+        "BIMAS.IS","MGROS.IS","SOKM.IS",
+        "MAVI.IS","ULKER.IS","CCOLA.IS",
+        "COSMO.IS"     # DÜZELTİLDİ: Kozmetik/medikal → perakende
     ],
 
     # ---------------- TEKNOLOJİ – TELEKOM – SAVUNMA ----------------
     "Teknoloji – Telekom – Savunma": [
-        "LOGO.IS", "ASELS.IS", "TCELL.IS",
-        "TTKOM.IS", "VESTL.IS", "SMART.IS",
-        "SMRTG.IS", "ASTOR.IS"
+        "ASELS.IS","ASTOR.IS","LOGO.IS",
+        "TCELL.IS","TTKOM.IS",
+        "VESTL.IS","SMART.IS","SMRTG.IS"
     ],
 
     # ---------------- KİMYA – PETROKİMYA – GÜBRE ----------------
     "Kimya – Petro – Gübre": [
-        "HEKTS.IS", "PETKM.IS", "SASA.IS",
-        "GUBRF.IS", "KMPUR.IS", "EGEEN.IS"
+        "HEKTS.IS","PETKM.IS","SASA.IS",
+        "GUBRF.IS","KMPUR.IS","EGEEN.IS",
+        "ALKA.IS","ACSEL.IS"    # ACSEL düzeltildi → kimya/kâğıt üretimi
     ],
 
     # ---------------- ENERJİ ----------------
     "Enerji": [
-        "AKSEN.IS", "ENJSA.IS", "GWIND.IS",
-        "ZOREN.IS", "ODAS.IS"
+        "AKSEN.IS","ENJSA.IS","ZOREN.IS",
+        "ODAS.IS","GWIND.IS","BIOEN.IS",
+        "EUPWR.IS","AHGAZ.IS"   # AHGAZ eklendi → doğalgaz dağıtımı
     ],
 
     # ---------------- SANAYİ – ÜRETİM – OTOMOTİV ----------------
     "Sanayi – Üretim – Otomotiv": [
-        "EREGL.IS", "ISDMR.IS", "KRDMD.IS",     # Demir-çelik
-        "ARCLK.IS", "SISE.IS",                 # Beyaz eşya – cam
-        "FROTO.IS", "TOASO.IS", "TTRAK.IS",    # Otomotiv
-        "OTKAR.IS", "ASUZU.IS",
-        "CEMTS.IS", "BAGFS.IS", "HKTM.IS",
-        "PARSN.IS", "KONTR.IS", "MGROS.IS"
+
+        # Demir-çelik
+        "EREGL.IS","ISDMR.IS","KRDMD.IS",
+
+        # Beyaz eşya – cam
+        "ARCLK.IS","SISE.IS",
+
+        # Otomotiv üretimi
+        "FROTO.IS","TOASO.IS","TTRAK.IS","ASUZU.IS","OTKAR.IS",
+
+        # Makine / Endüstriyel üretim
+        "HKTM.IS","PARSN.IS","ALCAR.IS",   # ALCAR eklendi (kablo/makine)
+        
+        # Çimento / İnşaat malzemeleri
+        "CEMTS.IS","BAGFS.IS","OYAKC.IS",
+
+        # Tekstil üretimi
+        "ERCB.IS"
     ],
 
     # ---------------- MADENCİLİK – METAL ----------------
     "Madencilik – Metal": [
-        "KOZAA.IS", "KOZAL.IS", "BRSAN.IS",
-        "GWIND.IS", "QUAGR.IS"
+        "KOZAA.IS","KOZAL.IS","BRSAN.IS"
     ],
 
-    # ---------------- GYO – İNŞAAT – GAYRİMENKUL ----------------
+    # ---------------- GYO – GAYRİMENKUL ----------------
     "GYO – Gayrimenkul": [
-        "KGYO.IS", "ISGYO.IS", "ENKAI.IS",
-        "KZBGY.IS", "PSGYO.IS", "AKFGY.IS",
-        "ALKA.IS"
+        "KGYO.IS","ISGYO.IS","KZBGY.IS",
+        "PSGYO.IS","AKFGY.IS"
     ],
 
-    # ---------------- TARIM – GIDA ÜRETİM ----------------
+    # ---------------- TARIM – GIDA ----------------
     "Tarım – Gıda Üretim": [
-        "EKSUN.IS", "BERA.IS", "ULKER.IS",
-        "ASUZU.IS", "HKTM.IS"
+        "EKSUN.IS","BERA.IS","ULKER.IS"
     ],
 
     # ---------------- HİZMET – TURİZM – SPOR ----------------
     "Hizmet – Turizm – Spor": [
-        "FENER.IS", "DOAS.IS", "COSMO.IS"
+        "FENER.IS","DOAS.IS"
     ]
 }
 
