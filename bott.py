@@ -27,6 +27,29 @@ ALARM_FILE = os.path.join(DATA_DIR, "alarmlar.json")
 PORTFOY_FILE = os.path.join(DATA_DIR, "portfoy.json")
 USERS_FILE = os.path.join(DATA_DIR, "users.json")
 
+# =============== ADMIN ID ===============
+ADMIN_ID = "1504519832"
+
+# =============== KULLANICI AKTİVİTE KAYDI ===============
+USER_STATS_FILE = os.path.join(DATA_DIR, "user_stats.json")
+
+def load_user_stats():
+    if not os.path.exists(USER_STATS_FILE):
+        return {}
+    try:
+        with open(USER_STATS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return {}
+
+def save_user_stats(data):
+    try:
+        with open(USER_STATS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+    except:
+        pass
+
+
 def load_users():
     if not os.path.exists(USERS_FILE):
         return []
@@ -1073,6 +1096,42 @@ def main():
             msg_data = item.get("message", {})
             chat_id = msg_data.get("chat", {}).get("id")
             text = (msg_data.get("text") or "").strip()
+            
+            # =============== KULLANICI AKTİVITE GÜNCELLEME ===============
+            stats = load_user_stats()
+            stats[str(chat_id)] = {
+               "son_aktif": now_istanbul().strftime("%Y-%m-%d %H:%M:%S")
+                       }
+            save_user_stats(stats)
+            
+            # =============== ADMIN: KULLANICI LİSTESİ ===============
+            if text == "/kullanicilar" and str(chat_id) == ADMIN_ID:
+                users = load_users()
+                stats = load_user_stats()
+
+                aktif = []
+                pasif = []
+
+                now = now_istanbul()
+
+                for uid in users:
+                    son = stats.get(uid, {}).get("son_aktif")
+                    if son:
+                        dt = datetime.strptime(son, "%Y-%m-%d %H:%M:%S")
+                        fark = now - dt
+                        if fark.days <= 3:
+                            aktif.append(f"{uid} — Son Aktif: {son}")
+                        else:
+                            pasif.append(f"{uid} — Son Aktif: {son}")
+                    else:
+                        pasif.append(f"{uid} — Kayıt Yok")
+
+                mesaj = "<b>📊 Kullanıcı Aktivite Listesi</b>\n\n"
+                mesaj += f"🟢 <b>Aktif (Son 3 Gün):</b>\n" + ("\n".join(aktif) if aktif else "—") + "\n\n"
+                mesaj += f"🔴 <b>Pasif:</b>\n" + ("\n".join(pasif) if pasif else "—")
+
+                send_message(chat_id, mesaj)
+                continue
 
             if not chat_id or not text:
                 continue
@@ -1266,7 +1325,7 @@ def main():
                         adet = float(parts[3].replace(",", "."))
                         maliyet = float(parts[4].replace(",", "."))
                     except:
-                        send_message(chat_id, "⚠️ Kullanım: <code>/portföy</code> ekle ASELS 100 54.8")
+                        send_message(chat_id, "⚠️ Kullanım: <code>/portföy</code> ekle ASELS 100(LOT) 54.8(Maaliyet)")
                         continue
 
                     if adet <= 0 or maliyet <= 0:
